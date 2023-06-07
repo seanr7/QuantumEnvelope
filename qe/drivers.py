@@ -280,18 +280,28 @@ class Excitation:
             Yield excitations of det |D> subject to specified constraint
 
         """
-        h = []  # `Occupied` orbitals to loop over
-        p = []  # `Virtual`  "                   "
-        o1 = min(constraint)  # Index of `smallest` occupied constraint orbital
+        ha = []  # `Occupied` orbitals to loop over
+        pa = []  # `Virtual`  "                   "
+        hb = []
+        pb = []
+
+        a1 = min(constraint)  # Index of `smallest` occupied constraint orbital
         B = set(
-            range(o1 + 1, self.n_orb)
-        )  # B: `Bitmask' -> |Determinant| {o1 + 1, ..., Norb - 1} # TODO: Maybe o1 inclusive...
-        spindet = getattr(det, spin)  # Get |Spin_determinant| of inputted |Determinant|, |D>
+            range(a1 + 1, self.n_orb)
+        )  # B: `Bitmask' -> |Determinant| {a1 + 1, ..., Norb - 1} # TODO: Maybe o1 inclusive...
+        if spin == "alpha":
+            det_a = getattr(
+                det, spin
+            )  # Get |Spin_determinant| of inputted |Determinant|, |D> (default is alpha)
+            det_b = getattr(det, "beta")
+        else:
+            det_a = getattr(det, spin)  # Get |Spin_determinant| of inputted |Determinant|, |D>
+            det_b = getattr(det, "alpha")
 
         # Some things can be pre-computed:
-        #   Which of the `constraint` (spin) orbitals {o1, o2, o3} are occupied in |D>? (If any)
+        #   Which of the `constraint` (spin) orbitals {a1, a2, a3} are occupied in |D_a>? (If any)
         constraint_orbitals_occupied = spindet.intersection(constraint)
-        #   Which `higher-order`(spin) orbitals o >= o1 that are not {o1, o2, o3} are occupied in |D>? (If any)
+        #   Which `higher-order` (spin) orbitals o >= a1 that are not {a1, a2, a3} are occupied in |D_a>? (If any)
         #   TODO: Different from Tubman paper, which has an error if I reada it correctly
         nonconstrained_orbitals_occupied = spindet.intersection(B) - constraint
 
@@ -304,76 +314,100 @@ class Excitation:
 
         # Create list of possible `particles` s.to constraint
         if len(constraint_orbitals_occupied) == 2:
-            # E.g., o1, o2 \in |D> -> A single x \in h to o3 will satisfy constraint
-            # New particles -> o3
-            p.append(
-                (spindet.union(constraint) - spindet.intersection(constraint)).intersection(
-                    constraint
-                )
-            )
+            # (Two constraint orbitals occupied) e.g., a1, a2 \in |D_a> -> A single (a) x_a \in ha to a_unocc is necessary to satisfy the constraint
+            # A single (b) will still not satisfy constraint
+            a_unocc = (det_a.union(constraint) - det_a.intersection(constraint)).intersection(
+                constraint
+            )  # The 1 unoccupied constraint orbital
+            pa.append([a_unocc])
         elif len(constraint_orbitals_occupied) == 3:
-            # o1, o2, o3 \in |D> -> |D> satisfies constraint! Any single x \in h to z, where z < o1
-            # New particles -> Basically, any empty orbitals < o1, so as not to ruin constraint
-            unocc_orbs = spindet.intersection(set(range(self.n_orb)))
-            # Loop through unocc orbitals until o1 is reaached
-            for z in takewhile(lambda x: x < o1, unocc_orbs):
-                # z < o_unocc trivially, no need to check they are distinct
-                p.append({z})
+            # a1, a2, a3 \in |D_a> -> |D> satisfies constraint! ->
+            #   Any single x_a \in ha to w_a where w_a < a1 will satisfy constraint
+            det_unocc_a_orbs = det_a - set(range(self.n_orb))
+            for w_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
+                pa.append([w_a])
+            #   Any single x_b \in hb to w_b
+            det_unocc_b_orbs = det_b - set(range(self.n_orb))
+            for _, w_b in enumerate(det_unocc_b_orbs):
+                pb.append([w_b])
 
         # Create list of possible `holes` s.to constraint
         if len(nonconstrained_orbitals_occupied) == 1:
-            # x \in |D> with x \not\in {o1, o2, o3} -> A single x to z \in p
-            # New holes -> x
-            h.append(nonconstrained_orbitals_occupied)
+            # x_a > a1 \in |D_a> with x_a \not\in {a1, a2, a3} -> A single (a) x_a to w_a \in pa is necessary to satisfy constraint
+            # A single (b) will not satisfy
+            x_a = nonconstrained_orbitals_occupied  # Has length 1; unpack
+            ha.append([x_a])
         elif len(nonconstrained_orbitals_occupied) == 0:
-            # No `higher` orbitals \not\in {o1, o2, o3} occupied in |D> -> A single x to z \in p, where x < o1
-            # New holes -> Any occupied orbitals < o1, so not to ruin constraint
-            for y in takewhile(lambda x: x < o1, spindet):
-                h.append({nonconstrained_orbitals_occupied, y})
+            # No `higher` orbitals \not\in {a1, a2, a3} occupied in |D> ->
+            #   A single (a) x_a to w_a \in pa, where x_a < a1 (so as not to ruin constraint)
+            for x_a in takewhile(lambda x: x < a1, det_a):
+                ha.append([x_a])
+            #   A single (b) x_b to w_b \in pb
+            for _, x_b in enumerate(det_b):
+                hb.append([x_b])
 
         # Finally, generate all excitations
-        for h_ in h:
-            for p_ in p:
-                excited_spindet = self.apply_excitation(getattr(det, spin), [[h_], [p_]])
-                if spin == "alpha":
-                    excited_det = Determinant(excited_spindet, getattr(det, "beta"))
-                else:
-                    excited_det = Determinant(getattr(det, "alpha"), excited_spindet)
+        for h in ha:
+            for p in pa:
+                excited_spindet = self.apply_excitation(det_a, [[h], [p]])
+                if spin == "alpha":  # Then, det_b is beta spindet
+                    excited_det = Determinant(excited_spindet, det_b)
+                else:  # Then, det_b is alpha spindet
+                    excited_det = Determinant(det_b, excited_spindet)
+                yield excited_det
+
+        for h in hb:
+            for p in pb:
+                excited_spindet = self.apply_excitation(det_b, [[h], [p]])
+                if spin == "alpha":  # Then, det_b is beta spindet
+                    excited_det = Determinant(det_a, excited_spindet)
+                else:  # Then, det_b is alpha spindet
+                    excited_det = Determinant(excited_spindet, det_b)
                 yield excited_det
 
     # TODO: This should ultimately replace gen_chunk_of_connected_determinants...
     def triplet_constrained_double_excitations_from_det(
         self, det: Determinant, constraint: Spin_determinant, spin="alpha"
     ) -> Iterator[Determinant]:
-        """Compute all (double) excitations of a det subject to a triplet contraint T = [o1: |OrbitalIdx|, o2: |OrbitalIdx|, o3: |OrbitalIdx|]
+        """Compute all (double) excitations of a det subject to a triplet contraint T = [a1: |OrbitalIdx|, a2: |OrbitalIdx|, a3: |OrbitalIdx|]
         By default: constraint T specifies 3 `most highly` occupied alpha spin orbitals allowed in the generated excitation
-            e.g., if exciting |D> does not yield |J> such that o1, o2, o3 are the `largest` occupied alpha orbitals in |J> -> Excitation not generated
+            e.g., if exciting |D> does not yield |J> such that a1, a2, a3 are the `largest` occupied alpha orbitals in |J> -> Excitation not generated
         Inputs:
 
         Outputs:
             Yield excitations of det |D> subject to specified constraint
 
         """
-        h = []  # `Occupied` orbitals to loop over
-        p = []  # `Virtual`  "                   "
-        o1 = min(constraint)  # Index of `smallest` occupied constraint orbital
+        # Same-spin alpha
+        haa = []  # `Occupied` orbitals to loop over
+        paa = []  # `Virtual`  "                   "
+        # Same-spin beta
+        hbb = []
+        pbb = []
+        # Oppositive spin
+        hab = []
+        pab = []
+        a1 = min(constraint)  # Index of `smallest` occupied alpha constraint orbital
         B = set(
-            range(o1 + 1, self.n_orb)
-        )  # B: `Bitmask' -> |Determinant| {o1 + 1, ..., Norb - 1} # TODO: Maybe o1 inclusive...
-        spindet = getattr(det, spin)  # Get |Spin_determinant| of inputted |Determinant|, |D>
+            range(a1 + 1, self.n_orb)
+        )  # B: `Bitmask' -> |Determinant| {a1 + 1, ..., Norb - 1} # TODO: Maybe o1 inclusive...
+        if spin == "alpha":
+            det_a = getattr(
+                det, spin
+            )  # Get |Spin_determinant| of inputted |Determinant|, |D> (default is alpha)
+            det_b = getattr(det, "beta")
+        else:
+            det_a = getattr(det, spin)  # Get |Spin_determinant| of inputted |Determinant|, |D>
+            det_b = getattr(det, "alpha")
 
         # Some things can be pre-computed:
-        #   Which of the `constraint` (spin) orbitals {o1, o2, o3} are occupied in |D>? (If any)
-        constraint_orbitals_occupied = spindet.intersection(constraint)
-        #   Which `higher-order`(spin) orbitals o >= o1 that are not {o1, o2, o3} are occupied in |D>? (If any)
-        #   TODO: Different from Tubman paper, which has an error if I reada it correctly
-        nonconstrained_orbitals_occupied = spindet.intersection(B) - constraint
+        #   Which of the `constraint` (spin) orbitals {a1, a2, a3} are occupied in |D>? (If any)
+        constraint_orbitals_occupied = det_a.intersection(constraint)
+        #   Which `higher-order`(spin) orbitals o >= a1 that are not {a1, a2, a3} are occupied in |D>? (If any)
+        #   TODO: Different from Tubman paper, which has an error if I read it correctly...
+        nonconstrained_orbitals_occupied = det_a.intersection(B) - constraint
 
-        # constraint.union(
-        #     spindet.intersect(B)
-        # ) - constraint.intersection(spindet.intersect(B))
-
-        # If no double excitation of |D> will produce |J> satisfying constraint
+        # If this -> no double excitation of |D> will produce |J> satisfying constraint |T>
         if len(constraint_orbitals_occupied) == 0 or len(nonconstrained_orbitals_occupied) > 2:
             print(
                 f"No double excitations generated by the inputted |Determinant| satisfy given constraint: {constraint}"
@@ -382,58 +416,110 @@ class Excitation:
 
         # Create list of possible `particles` s.to constraint
         if len(constraint_orbitals_occupied) == 1:
-            # E.g., o1 \in |D> -> A same-spin double to (x, y) \in h to (o2, o3) will satisfy constraint
-            # New particles -> o2, o3
-            p.append(
-                (spindet.union(constraint) - spindet.intersection(constraint)).intersection(
-                    constraint
-                )
-            )
-        elif len(constraint_orbitals_occupied) == 2:
-            # E.g., o1, o2 \in |D> -> A same-spin double (x, y) \in h to (z, o3), where z < o1
-            # New particles -> o3, z < o1 (if something is excited to z > o1, three highest occupied orbs are not o1, o2, o3 anymore)
-            o_unocc = (spindet.union(constraint) - spindet.intersection(constraint)).intersection(
+            # (One constraint orbital occupied) e.g., a1 \in |D_a> -> A same-spin (aa) double to (x_a, y_a) \in haa to (a2, a3) is necessary
+            # No same-spin (bb) or opposite-spin (ab) excitations will satisfy constraint
+            # New particles -> a2, a3
+            a_unocc_1, a_unocc_2 = (
+                det_a.union(constraint) - det_a.intersection(constraint)
+            ).intersection(
                 constraint
-            )  # The unoccupied constraint orbital (e.g., o3)
-            unocc_orbs = spindet.intersection(set(range(self.n_orb)))
-            # Loop through unocc orbitals until o1 is reaached
-            for z in takewhile(lambda x: x < o1, unocc_orbs):
-                # z < o_unocc trivially, no need to check they are distinct
-                p.append({z, o_unocc})
+            )  # This set will have length 2; unpack
+            paa.append([a_unocc_1, a_unocc_2])
+
+        elif len(constraint_orbitals_occupied) == 2:
+            # (Two constraint orbitals occupied) e.g., a1, a2 \in |D_a> ->
+            #   A same-spin (aa) double (x_a, y_a) \in haa to (z_a, a_unocc), where z_a\not\in|D_a>, and z_a < a1 (if excited to z_a > a1, constraint ruined!)
+            a_unocc = (det_a.union(constraint) - det_a.intersection(constraint)).intersection(
+                constraint
+            )  # The 1 unoccupied constraint orbital
+            det_unocc_a_orbs = set(range(self.n_orb)) - det_a  # Unocc orbitals in |D_a>
+            for z_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
+                # z < a_unocc trivially, no need to check they are distinct
+                paa.append([z_a, a_unocc])
+            #   No same spin (bb) excitations will satisfy constraint
+            #   An oppopsite spin (ab) double (x_a, y_b) \in \hab to (a_unocc, z_b), where z\not\in|D_b>
+            det_unocc_b_orbs = set(range(self.n_orb)) - det_b  # Unocc orbitals in |D_b>
+            for _, z_b in enumerate(det_unocc_b_orbs):
+                pab.append(a_unocc, z_b)
+
         elif len(constraint_orbitals_occupied) == 3:
-            # o1, o2, o3 \in |D> -> |D> satisfies constraint! Any same-spin double (x, y) \in h to (w, z), where w, z < o1
-            # New particles -> Basically, any empty orbitals < o1, so as not to ruin constraint
-            unocc_orbs = spindet.intersection(set(range(self.n_orb)))
-            for z in takewhile(lambda x: x < o1, unocc_orbs):
-                for w in takewhile(lambda x: x < o1, unocc_orbs):
-                    if z != w:
-                        p.append({z, w})
+            # a1, a2, a3 \in |D_a> -> |D> satisfies constraint! ->
+            #   Any same-spin (aa) double (x_a, y_a) \in haa to (w_a, z_a), where w_a, z_a < a1
+            det_unocc_a_orbs = det_a - set(range(self.n_orb))
+            for w_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
+                for z_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
+                    if w_a != z_a:
+                        paa.append([w_a, z_a])
+            #   Any same-spin (bb) double (x_b, y_b) \in hbb to (w_b, z_b)
+            det_unocc_b_orbs = set(range(self.n_orb)) - det_b  # Unocc orbitals in |D_a>
+            for _, w_b in enumerate(det_unocc_b_orbs):
+                for _, z_b in enumerate(det_unocc_a_orbs):
+                    if w_b != z_b:
+                        pbb.append([w_b, z_b])
+            #   Any oppospite-spin (ab) double (x_a, y_b) \in hab to (w_a, z_b), where w_a < a1
+            for w_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
+                for _, z_b in enumerate(det_unocc_b_orbs):
+                    pab.append([w_a, z_b])
 
         # Create list of possible `holes` s.to constraint
         if len(nonconstrained_orbitals_occupied) == 2:
-            # x, y \in |D> with x, y \not\in {o1, o2, o3} -> A same-spin double (x, y) to (w, z) \in p
+            # x_a, y_a \in |D_a> with x_a, y_a > a1 and \not\in {a1, a2, a3} -> A same-spin (aa) double (x_a, y_a) to (w_a, z_a) \in paa is necessary
+            # No same-spin (bb) or opposite-spin (ab) excitations will satisfy constraint
             # New holes -> x, y
-            h.append(nonconstrained_orbitals_occupied)
+            x_a, y_a = nonconstrained_orbitals_occupied  # This set will have length 2; unpack
+            haa.append([x_a, y_a])
         elif len(nonconstrained_orbitals_occupied) == 1:
-            # x \in |D> with x \not\in {o1, o2, o3} -> A same-spin double (x, y) to (w, z) \in p, where y < o1
-            # New holes -> x, y < o1 (exciting electron out of orbital y < o1 doesn't ruin constraint)
-            for y in takewhile(lambda x: x < o1, spindet):
-                h.append({nonconstrained_orbitals_occupied, y})
+            # x_a > a1 \in |D_a> with x_a \not\in {a1, a2, a3} ->
+            #   A same-spin (aa) double (x_a, y_a) to (w_a, z_a) \in paa, where y_a < a1 (exciting y_a < a1 doesn't remove constraint)
+            x_a = nonconstrained_orbitals_occupied  # Has length 1; unpack
+            for y_a in takewhile(lambda x: x < a1, det_a):
+                haa.append([x_a, y_a])
+            #   A same-spin (bb) double will not satisfy the constraint
+            #   A opposite-spin (ab) double (x_a, y_b) -> (w_a, z_b) \in pab where y_b \in |D_b>
+            for _, y_b in enumerate(det_b):
+                hab.append([x_a, y_b])
         elif len(nonconstrained_orbitals_occupied) == 0:
-            # No `higher` orbitals \not\in {o1, o2, o3} occupied in |D> -> A same spin double (x, y) to (w, z) \in p, where x, y < o1
-            # New holes -> Any occupied orbitals < o1, so not to ruin constraint
-            for x_ in takewhile(lambda x: x < o1, spindet):
-                for y in takewhile(lambda x: x < o1, spindet):
-                    h.append({x_, y})
+            # No `higher` orbitals \not\in {a1, a2, a3} occupied in |D> ->
+            #   A same-spin (aa) double (x_a, y_a) to (w_a, z_a) \in paa, where x_a, y_a < a1
+            for x_a in takewhile(lambda x: x < a1, det_a):
+                for y_a in takewhile(lambda x: x < a1, det_a):
+                    haa.append([x_a, y_a])
+            #   A same-spin (bb) double (x_b, y_b) to (w_b, z_b) \in pbb
+            for _, x_b in enumerate(det_b):
+                for _, y_b in enumerate(det_b):
+                    hbb.append([x_b, y_b])
+            #   A opposite-spin (ab) double (x_a, y_b) to (w_a, z_b) \in pab, where x_a < a1
+            for x_a in takewhile(lambda x: x < a1, det_a):
+                for _, y_b in enumerate(det_b):
+                    hab.append([x_a, y_b])
 
         # Finally, generate all excitations
-        for h1, h2 in h:
-            for p1, p2 in p:
-                excited_spindet = self.apply_excitation(getattr(det, spin), [[h1, h2], [p1, p2]])
-                if spin == "alpha":
-                    excited_det = Determinant(excited_spindet, getattr(det, "beta"))
+        for ha1, ha2 in haa:
+            for pa1, pa2 in paa:
+                excited_spindet = self.apply_excitation(det_a, [[ha1, ha2], [pa1, pa2]])
+                if spin == "alpha":  # Then, det_b is beta spindet
+                    excited_det = Determinant(excited_spindet, det_b)
+                else:  # Then, det_b is alpha spindet
+                    excited_det = Determinant(getattr(det_b, excited_spindet))
+                yield excited_det
+
+        for hb1, hb2 in hbb:
+            for pb1, pb2 in pbb:
+                excited_spindet = self.apply_excitation(det_b, [[hb1, hb2], [pb1, pb2]])
+                if spin == "alpha":  # Then, det_b is beta spindet
+                    excited_det = Determinant(det_a, excited_spindet)
+                else:  # Then, det_b is alpha spindet
+                    excited_det = Determinant(excited_spindet, det_a)
+                yield excited_det
+
+        for ha, hb in hab:
+            for pa, pb in pab:
+                excited_spindet_a = self.apply_excitation(det_a, [[ha], [pa]])
+                excited_spindet_b = self.apply_excitation(det_b, [[hb], [pb]])
+                if spin == "alpha":  # Then, det_b is beta spindet
+                    excited_det = Determinant(excited_spindet_a, excited_spindet_b)
                 else:
-                    excited_det = Determinant(getattr(det, "alpha"), excited_spindet)
+                    excited_det = Determinant(excited_spindet_b, excited_spindet_a)
                 yield excited_det
 
 
@@ -1420,6 +1506,7 @@ class H_indices_generator(object):
         psi_i: Psi_det,
     ) -> Tuple[Dict[OrbitalIdx, Set[int]], Dict[OrbitalIdx, Set[int]]]:
         """
+        Return (two) dicts mapping spin orbital indices -> determinants that are occupied in those orbitals
         >>> H_indices_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
         (defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}}),
          defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}}))
@@ -1427,7 +1514,7 @@ class H_indices_generator(object):
         set()
         """
         # Can generate det_to_indices hash in here
-        def get_dets_occ(psi_i: Psi_det, spin: str) -> Dict[OrbigitalIdx, Set[int]]:
+        def get_dets_occ(psi_i: Psi_det, spin: str) -> Dict[OrbitalIdx, Set[int]]:
             ds = defaultdict(set)
             for i, det in enumerate(psi_i):
                 for o in getattr(det, spin):
