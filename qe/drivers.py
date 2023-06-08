@@ -339,11 +339,11 @@ class Excitation:
         elif len(constraint_orbitals_occupied) == 3:
             # a1, a2, a3 \in |D_a> -> |D> satisfies constraint! ->
             #   Any single x_a \in ha to w_a where w_a < a1 will satisfy constraint
-            det_unocc_a_orbs = set(det_a) - self.all_orbs
+            det_unocc_a_orbs = self.all_orbs - set(det_a)
             for w_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
                 pa.append(w_a)
             #   Any single x_b \in hb to w_b
-            det_unocc_b_orbs = set(det_b) - self.all_orbs
+            det_unocc_b_orbs = self.all_orbs - set(det_b)
             for _, w_b in enumerate(det_unocc_b_orbs):
                 pb.append(w_b)
 
@@ -370,7 +370,6 @@ class Excitation:
                     excited_det = Determinant(excited_spindet, det_b)
                 else:  # Then, det_b is alpha spindet
                     excited_det = Determinant(det_b, excited_spindet)
-                print(excited_spindet[-3:], constraint)
                 assert excited_spindet[-3:] == constraint
                 yield excited_det
 
@@ -381,7 +380,6 @@ class Excitation:
                     excited_det = Determinant(det_a, excited_spindet)
                 else:  # Then, det_b is alpha spindet
                     excited_det = Determinant(excited_spindet, det_b)
-                print(det_a[-3:], constraint)
                 assert det_a == constraint
                 yield excited_det
 
@@ -493,7 +491,8 @@ class Excitation:
             #   A same-spin (aa) double (x_a, y_a) to (w_a, z_a) \in paa, where y_a < a1 (exciting y_a < a1 doesn't remove constraint)
             (x_a,) = nonconstrained_orbitals_occupied  # Has length 1; unpack
             for y_a in takewhile(lambda x: x < a1, det_a):
-                haa.append((x_a, y_a))
+                if x_a != y_a:
+                    haa.append((x_a, y_a))
             #   A same-spin (bb) double will not satisfy the constraint
             #   A opposite-spin (ab) double (x_a, y_b) -> (w_a, z_b) \in pab where y_b \in |D_b>
             for _, y_b in enumerate(det_b):
@@ -503,11 +502,13 @@ class Excitation:
             #   A same-spin (aa) double (x_a, y_a) to (w_a, z_a) \in paa, where x_a, y_a < a1
             for x_a in takewhile(lambda x: x < a1, det_a):
                 for y_a in takewhile(lambda x: x < a1, det_a):
-                    haa.append((x_a, y_a))
+                    if x_a != y_a:
+                        haa.append((x_a, y_a))
             #   A same-spin (bb) double (x_b, y_b) to (w_b, z_b) \in pbb
             for _, x_b in enumerate(det_b):
                 for _, y_b in enumerate(det_b):
-                    hbb.append((x_b, y_b))
+                    if x_b != y_b:
+                        hbb.append((x_b, y_b))
             #   A opposite-spin (ab) double (x_a, y_b) to (w_a, z_b) \in pab, where x_a < a1
             for x_a in takewhile(lambda x: x < a1, det_a):
                 for _, y_b in enumerate(det_b):
@@ -520,8 +521,7 @@ class Excitation:
                 if spin == "alpha":  # Then, det_b is beta spindet
                     excited_det = Determinant(excited_spindet, det_b)
                 else:  # Then, det_b is alpha spindet
-                    excited_det = Determinant(getattr(det_b, excited_spindet))
-                print(excited_spindet[-3:], constraint)
+                    excited_det = Determinant(det_b, excited_spindet)
                 assert excited_spindet[-3:] == constraint
                 yield excited_det
 
@@ -532,7 +532,6 @@ class Excitation:
                     excited_det = Determinant(det_a, excited_spindet)
                 else:  # Then, det_b is alpha spindet
                     excited_det = Determinant(excited_spindet, det_a)
-                print(det_a[-3:], constraint)
                 assert det_a == constraint
                 yield excited_det
 
@@ -544,7 +543,6 @@ class Excitation:
                     excited_det = Determinant(excited_spindet_a, excited_spindet_b)
                 else:
                     excited_det = Determinant(excited_spindet_b, excited_spindet_a)
-                print(excited_spindet_a[-3:], constraint)
                 assert excited_spindet_a[-3:] == constraint
                 yield excited_det
 
