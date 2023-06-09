@@ -379,7 +379,7 @@ class Excitation:
                 if spin == "alpha":  # Then, det_b is beta spindet
                     excited_det = Determinant(det_a, excited_spindet)
                 else:  # Then, det_b is alpha spindet
-                    excited_det = Determinant(excited_spindet, det_b)
+                    excited_det = Determinant(excited_spindet, det_a)
                 assert det_a == constraint
                 yield excited_det
 
@@ -547,7 +547,7 @@ class Excitation:
                 yield excited_det
 
     # TODO: Next, MPI function to distribute work
-    def gen_all_connected_by_triplet_constraint(
+    def gen_all_connected_by_triplet_constraints(
         self, psi: Psi_det, constraints: List[Spin_determinant], spin="alpha"
     ) -> Iterator[Determinant]:
         # Outer pass over constraints
