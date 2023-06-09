@@ -471,7 +471,7 @@ class Excitation:
             #   Any same-spin (bb) double (x_b, y_b) \in hbb to (w_b, z_b)
             det_unocc_b_orbs = self.all_orbs - set(det_b)  # Unocc orbitals in |D_a>
             for _, w_b in enumerate(det_unocc_b_orbs):
-                for _, z_b in enumerate(det_unocc_a_orbs):
+                for _, z_b in enumerate(det_unocc_b_orbs):
                     if w_b != z_b:
                         pbb.append((w_b, z_b))
             #   Any oppospite-spin (ab) double (x_a, y_b) \in hab to (w_a, z_b), where w_a < a1
@@ -545,6 +545,17 @@ class Excitation:
                     excited_det = Determinant(excited_spindet_b, excited_spindet_a)
                 assert excited_spindet_a[-3:] == constraint
                 yield excited_det
+
+    # TODO: Next, MPI function to distribute work
+    def gen_all_connected_by_triplet_constraint(
+        self, psi: Psi_det, constraints: List[Spin_determinant], spin="alpha"
+    ) -> Iterator[Determinant]:
+        # Outer pass over constraints
+        for con in constraints:
+            # Inner pass over internal determinants in psi
+            for det in psi:
+                yield from self.triplet_constrained_single_excitations_from_det(det, con, spin)
+                yield from self.triplet_constrained_double_excitations_from_det(det, con, spin)
 
 
 #  ______ _                        _   _       _
