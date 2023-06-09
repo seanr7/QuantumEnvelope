@@ -369,7 +369,7 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
             d[con].append(det)
         return d
 
-    def test_constrained_excitations(self):
+    def test_constrained_construction_connected_space(self):
         # Define ref determinant
         psi = self.reference_det
         # We need two things:
@@ -386,17 +386,17 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
             for constrained_excitation in self.exci.triplet_constrained_single_excitations_from_det(
                 psi, con, spin="alpha"
             ):
-                d[con].append(constrained_excitation)
-                # print(f"Constraint: {con}, single: {constrained_excitation}")
-                if constrained_excitation not in psi_connected_by_constraint:
+                # (Per constraint) Multiple internal determinant might touch one excited
+                # This is OK, so only tack it on if we haven't seen it yet in this pass
+                if constrained_excitation not in d[con]:
+                    d[con].append(constrained_excitation)
                     psi_connected_by_constraint.append(constrained_excitation)
 
             for constrained_excitation in self.exci.triplet_constrained_double_excitations_from_det(
                 psi, con, spin="alpha"
             ):
-                d[con].append(constrained_excitation)
-                # print(f"Constraint: {con}, double: {constrained_excitation}")
-                if constrained_excitation not in psi_connected_by_constraint:
+                if constrained_excitation not in d[con]:
+                    d[con].append(constrained_excitation)
                     psi_connected_by_constraint.append(constrained_excitation)
 
         # Lets generate the full connected space for reference
@@ -404,31 +404,20 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
         print(len(psi_connected_ref), len(psi_connected_by_constraint))
         # Do we exhaustively generate the onnected space?
         for _, det in enumerate(psi_connected_ref):
-            # print(det)
             assert det in psi_connected_by_constraint
 
         # Containment other way?
         for _, det in enumerate(psi_connected_by_constraint):
-            # print(det)
             assert det in psi_connected_ref
 
-        for _, dets in d.items():
+        # Are these constraints disjoint??
+        for ref_con, dets in d.items():
             for con in self.generate_constraints:
-                assert (det not in d[con] for det in dets)
+                if ref_con != con:
+                    for det in dets:
+                        assert det not in d[con]
 
-        # Yes, so let's see what we double count
-        # double_counts = []
-        # for _, det in enumerate(psi_connected_by_constraint):
-        #     if psi_connected_by_constraint.count(det) > 1:
-        #         if det not in double_counts:
-        #             double_counts.append(det)
-
-        # print((double_counts))
-
-        # Its because, mutliple internal dets -> one excited det!!!!!!!!!!
-        # print(psi_connected_by_constraint)
-        # self.assertListEqual(psi_connected_ref, psi_connected_by_constraint)
-        # Now, let's compare to the constrained guys and see how we do
+        self.assertListEqual(sorted(psi_connected_ref), sorted(psi_connected_by_constraint))
 
 
 class Test_Integral_Driven_Categories(Test_Minimal):
