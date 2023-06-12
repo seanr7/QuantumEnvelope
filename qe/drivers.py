@@ -697,7 +697,6 @@ class Hamiltonian_one_electron(object):
     E0: Energy
 
     def H_ij_orbital(self, i: OrbitalIdx, j: OrbitalIdx) -> float:
-
         return self.integrals[(i, j)]
 
     def H_ii(self, det_i: Determinant) -> Energy:
@@ -956,7 +955,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
     def do_single(det_indices_i, phasemod, occ, h, p, psi_i, det_to_index_j, spin, exci):
         # Single excitation from h to p, occ is index of orbital occupied
         # Excitation is from internal to external space
-        # TODO: Some sort of additional pre-filtering based on constraints? 
+        # TODO: Some sort of additional pre-filtering based on constraints?
         for a in det_indices_i:  # Loop through candidate determinants in internal space
             det = psi_i[a]
             excited_spindet = exci.apply_excitation(getattr(det, spin), [[h], [p]])
@@ -1549,6 +1548,7 @@ class H_indices_generator(object):
         >>> H_indices_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,),beta=(0,))])[0][1]
         set()
         """
+
         # Can generate det_to_indices hash in here
         def get_dets_occ(psi_i: Psi_det, spin: str) -> Dict[OrbitalIdx, Set[int]]:
             ds = defaultdict(set)
