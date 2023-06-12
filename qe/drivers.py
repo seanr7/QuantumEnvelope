@@ -956,6 +956,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
     def do_single(det_indices_i, phasemod, occ, h, p, psi_i, det_to_index_j, spin, exci):
         # Single excitation from h to p, occ is index of orbital occupied
         # Excitation is from internal to external space
+        # TODO: Some sort of additional pre-filtering based on constraints? 
         for a in det_indices_i:  # Loop through candidate determinants in internal space
             det = psi_i[a]
             excited_spindet = exci.apply_excitation(getattr(det, spin), [[h], [p]])

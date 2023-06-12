@@ -271,7 +271,7 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
         for det in Excitation(4).get_chunk_of_connected_determinants(psi):
             psi += det
         d_two_e_integral = {}
-        for (i, j, k, l) in product(range(4), repeat=4):
+        for i, j, k, l in product(range(4), repeat=4):
             d_two_e_integral[compound_idx4(i, j, k, l)] = 1
         return psi, d_two_e_integral
 
@@ -398,7 +398,6 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
                 for (
                     constrained_excitation
                 ) in self.exci.triplet_constrained_double_excitations_from_det(psi, con, spin):
-
                     d[con].append(constrained_excitation)
                     if constrained_excitation not in psi_connected_by_constraint:
                         psi_connected_by_constraint.append(constrained_excitation)
@@ -520,7 +519,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_a_occ,
             spindet_b_occ,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
-        for (i, j, k, l) in self.integral_by_category["A"]:
+        for i, j, k, l in self.integral_by_category["A"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_A(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ
             ):
@@ -536,7 +535,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_a_occ_i,
             spindet_b_occ_i,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
-        for (i, j, k, l) in self.integral_by_category["A"]:
+        for i, j, k, l in self.integral_by_category["A"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_A(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i
             ):
@@ -552,7 +551,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_a_occ,
             spindet_b_occ,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
-        for (i, j, k, l) in self.integral_by_category["B"]:
+        for i, j, k, l in self.integral_by_category["B"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_B(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ
             ):
@@ -568,7 +567,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_a_occ_i,
             spindet_b_occ_i,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
-        for (i, j, k, l) in self.integral_by_category["B"]:
+        for i, j, k, l in self.integral_by_category["B"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_B(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i
             ):
@@ -584,7 +583,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_a_occ,
             spindet_b_occ,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
-        for (i, j, k, l) in self.integral_by_category["C"]:
+        for i, j, k, l in self.integral_by_category["C"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_C(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
             ):
@@ -600,7 +599,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_a_occ_i,
             spindet_b_occ_i,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
-        for (i, j, k, l) in self.integral_by_category["C"]:
+        for i, j, k, l in self.integral_by_category["C"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_C(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, Excitation(4)
             ):
@@ -616,7 +615,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_a_occ,
             spindet_b_occ,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
-        for (i, j, k, l) in self.integral_by_category["D"]:
+        for i, j, k, l in self.integral_by_category["D"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_D(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
             ):
@@ -632,7 +631,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_a_occ_i,
             spindet_b_occ_i,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
-        for (i, j, k, l) in self.integral_by_category["D"]:
+        for i, j, k, l in self.integral_by_category["D"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_D(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, Excitation(4)
             ):
@@ -648,7 +647,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_a_occ,
             spindet_b_occ,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
-        for (i, j, k, l) in self.integral_by_category["E"]:
+        for i, j, k, l in self.integral_by_category["E"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_E(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
             ):
@@ -664,7 +663,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_a_occ_i,
             spindet_b_occ_i,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
-        for (i, j, k, l) in self.integral_by_category["E"]:
+        for i, j, k, l in self.integral_by_category["E"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_E(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, Excitation(4)
             ):
@@ -680,7 +679,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_a_occ,
             spindet_b_occ,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
-        for (i, j, k, l) in self.integral_by_category["F"]:
+        for i, j, k, l in self.integral_by_category["F"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_F(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
             ):
@@ -696,7 +695,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_a_occ_i,
             spindet_b_occ_i,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
-        for (i, j, k, l) in self.integral_by_category["F"]:
+        for i, j, k, l in self.integral_by_category["F"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_F(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, Excitation(4)
             ):
@@ -712,7 +711,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_a_occ,
             spindet_b_occ,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
-        for (i, j, k, l) in self.integral_by_category["G"]:
+        for i, j, k, l in self.integral_by_category["G"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_G(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
             ):
@@ -728,7 +727,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_a_occ_i,
             spindet_b_occ_i,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
-        for (i, j, k, l) in self.integral_by_category["G"]:
+        for i, j, k, l in self.integral_by_category["G"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_G(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, Excitation(4)
             ):
