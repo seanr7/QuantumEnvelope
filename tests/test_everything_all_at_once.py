@@ -443,7 +443,6 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
             psi_connected_ref = []
             for det in self.exci.get_chunk_of_connected_determinants(psi):
                 psi_connected_ref += det
-            print(len(psi_connected_ref), len(psi_connected_by_constraint))
 
             # Are these constraints disjoint??
             for ref_con, dets in d.items():

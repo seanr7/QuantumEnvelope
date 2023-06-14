@@ -1512,14 +1512,10 @@ class Hamiltonian_two_electrons_integral_driven(object):
         return sum(phase * self.H_ijkl_orbital(*idx) for idx, phase in self.H_ii_indices(det_i))
 
 
-@dataclass
 class H_indices_generator(object):
     """Generate and cache necessary utilities for building the
     two-electron Hamiltonian in an integral-driven fashion.
     Re-created at each CIPSI iteration; i.e. for each new list of internal determinants."""
-
-    psi_internal: Psi_det  # Internal wavefunction
-    psi_external: Psi_det  # External wavefunction
 
     def __init__(self, psi_internal: Psi_det, psi_external: Psi_det = None):
         # Application dependent
