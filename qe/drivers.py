@@ -725,17 +725,25 @@ class Hamiltonian_one_electron(object):
         return h.reshape(len(psi_i), len(psi_j))
 
 
+#   _   _                 _ _ _              _
+#  | | | |               (_) | |            (_)
+#  | |_| | __ _ _ __ ___  _| | |_ ___  _ __  _  __ _ _ __
+#  |  _  |/ _` | '_ ` _ \| | | __/ _ \| '_ \| |/ _` | '_ \
+#  | | | | (_| | | | | | | | | || (_) | | | | | (_| | | | |
+#  \_| |_/\__,_|_| |_| |_|_|_|\__\___/|_| |_|_|\__,_|_| |_|
+#
+#
 #   ___            _
 #    |       _    |_ |  _   _ _|_ ._ _  ._   _
 #    | \/\/ (_)   |_ | (/_ (_  |_ | (_) | | _>
-#    _                                          _
-#   | \  _ _|_  _  ._ ._ _  o ._   _. ._ _|_   | \ ._ o     _  ._
-#   |_/ (/_ |_ (/_ |  | | | | | | (_| | | |_   |_/ |  | \/ (/_ | |
 #
 
 
 @dataclass
-class Hamiltonian_two_electrons_determinant_driven(object):
+class Hamiltonian_two_electrons(object):
+    """Put some things here that are used by both the determinant-driven and integral-driven
+    versions of the code."""
+
     d_two_e_integral: Two_electron_integral
 
     def H_ijkl_orbital(self, i: OrbitalIdx, j: OrbitalIdx, k: OrbitalIdx, l: OrbitalIdx) -> float:
@@ -764,6 +772,30 @@ class Hamiltonian_two_electrons_determinant_driven(object):
 
         for i, j in product(det_i.alpha, det_i.beta):
             yield (i, j, i, j), 1
+
+    @cached_property
+    def N_orb(self):
+        key = max(self.d_two_e_integral)
+        return max(compound_idx4_reverse(key)) + 1
+
+    @cached_property
+    def exci(self):
+        # Create single instance of excitation class=
+        return Excitation(self.N_orb)
+
+
+#   ___            _
+#    |       _    |_ |  _   _ _|_ ._ _  ._   _
+#    | \/\/ (_)   |_ | (/_ (_  |_ | (_) | | _>
+#    _                                          _
+#   | \  _ _|_  _  ._ ._ _  o ._   _. ._ _|_   | \ ._ o     _  ._
+#   |_/ (/_ |_ (/_ |  | | | | | | (_| | | |_   |_/ |  | \/ (/_ | |
+#
+
+
+@dataclass
+class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, object):
+    d_two_e_integral: Two_electron_integral
 
     @staticmethod
     def H_ij_indices(
@@ -854,35 +886,8 @@ class Hamiltonian_two_electrons_determinant_driven(object):
 
 
 @dataclass
-class Hamiltonian_two_electrons_integral_driven(object):
+class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, object):
     d_two_e_integral: Two_electron_integral
-
-    def H_ijkl_orbital(self, i: OrbitalIdx, j: OrbitalIdx, k: OrbitalIdx, l: OrbitalIdx) -> float:
-        """Assume that *all* the integrals are in
-        `d_two_e_integral` In this function, for simplicity we don't use any
-        symmetry sparse representation.  For real calculations, symmetries and
-        storing only non-zeros needs to be implemented to avoid an explosion of
-        the memory requirements."""
-        key = compound_idx4(i, j, k, l)
-        return self.d_two_e_integral[key]
-
-    @staticmethod
-    def H_ii_indices(det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
-        """Diagonal element of the Hamiltonian : <I|H|I>.
-        >>> sorted(Hamiltonian_two_electrons_integral_driven.H_ii_indices( Determinant((0,1),(2,3))))
-        [((0, 1, 0, 1), 1), ((0, 1, 1, 0), -1), ((0, 2, 0, 2), 1), ((0, 3, 0, 3), 1),
-         ((1, 2, 1, 2), 1), ((1, 3, 1, 3), 1), ((2, 3, 2, 3), 1), ((2, 3, 3, 2), -1)]
-        """
-        for i, j in combinations(det_i.alpha, 2):
-            yield (i, j, i, j), 1
-            yield (i, j, j, i), -1
-
-        for i, j in combinations(det_i.beta, 2):
-            yield (i, j, i, j), 1
-            yield (i, j, j, i), -1
-
-        for i, j in product(det_i.alpha, det_i.beta):
-            yield (i, j, i, j), 1
 
     @staticmethod
     def get_dets_occ_in_orbitals(
@@ -1439,16 +1444,6 @@ class Hamiltonian_two_electrons_integral_driven(object):
             yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
                 hp1, hp2, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", exci
             )
-
-    @cached_property
-    def N_orb(self):
-        key = max(self.d_two_e_integral)
-        return max(compound_idx4_reverse(key)) + 1
-
-    @cached_property
-    def exci(self):
-        # Create single instance of excitation class to avoid doing so repeatedly in category functions
-        return Excitation(self.N_orb)
 
     def H_indices(self, psi_i, psi_j) -> Iterator[Two_electron_integral_index_phase]:
         # Returns H_indices, and idx of associated integral
