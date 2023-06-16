@@ -1805,6 +1805,75 @@ class Hamiltonian_generator(object):
             self.H_i_1e_matrix_elements, M
         ) + H_i_implicit_matrix_product_step(self.H_i_2e_matrix_elements, M)
 
+    def H_indices_pt2(self, C: Spin_determinant, psi_coef: Psi_coef):
+        # Compute len(psi_internal) \times len(psi_external_chunk) `Hamiltonian'
+        # Each rank computes its contributions in place, these are then gathered to compute the full pt2 energy in self.E_pt2
+        c = np.array(psi_coef, dtype="float")  # Coef. vector as np array
+        # Pre-allocate space for nominators of E_pt2 contributions (as dict for now)
+        nominator_conts_table = defaultdict(int)
+        # Two-electron matrix elements
+
+        # By constraint:
+        # for C in constraints:
+        #   for I, J in gen_connected_by_constraint(psi_internal, C):
+        #       E_pt2_J <- (|J⟩, c[I]* <I|H|J>)
+        # Store pairs of (|J⟩, E_pt2_J) -> By end of inner loop, partial contribution of |J⟩ to E_pt2 is fully computed
+        # As in [Tubman et al., `18] they instead store individual numerator conts separately, do a sort by bistring, then aggregate across bitstrings
+        if self.driven_by == "determinant":
+            # Pass over internal determinants
+            for I, det_I in enumerate(self.psi_internal):
+                # Inner pass (for each |I⟩) generates all excitations satisfying constraint |C⟩ from |I⟩
+                # Triplet constrained singles
+                for det_J in Excitation(self.N_orb).triplet_constrained_single_excitations_from_det(
+                    det_I, C
+                ):
+                    for idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_ij_indices(
+                        det_I, det_J
+                    ):
+                        nominator_conts_table[det_J] += (
+                            c[I]
+                            * phase
+                            * self.H_i_generator.Hamiltonian_2e_driver.H_ijkl_orbital(*idx)
+                        )
+                    nominator_conts_table[det_J] += c[
+                        I
+                    ] * self.H_i_generator.Hamiltonian_1e_driver.H_ij(det_I, det_J)
+                # Triplet-constrained doubles
+                for det_J in Excitation(self.N_orb).triplet_constrained_double_excitations_from_det(
+                    det_I, C
+                ):
+                    for idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_ij_indices(
+                        det_I, det_J
+                    ):
+                        nominator_conts_table[det_J] += (
+                            c[I]
+                            * phase
+                            * self.H_i_generator.Hamiltonian_2e_driver.H_ijkl_orbital(*idx)
+                        )
+
+            # Remove contributions of internal determinants TODO: This is probably dirty
+            for det_I in self.psi_internal:
+                if det_I in nominator_conts_table:
+                    del nominator_conts_table[det_I]
+            # `Sort and accumulate` E_pt2 contributions corresponding to individual dets ∣J⟩ done in place above...
+            # Each item in (key, item) pair is the partial E_pt2 contribution of ∣J⟩ -> Denoted E_pt2_J
+
+            E_pt2_J = nominator_conts_table.values()
+            nominator_conts = np.array(list(E_pt2_J), dtype="float")
+            E_var = self.E(psi_coef)  # Pre-compute variational energy
+            denominator_conts = np.divide(
+                1.0,
+                E_var
+                - np.array(
+                    [self.H_i_generator.H_ii(det_J) for det_J in nominator_conts_table.keys()]
+                ),
+            )
+            return nominator_conts, denominator_conts
+        elif self.driven_by == "integral":
+            raise NotImplementedError
+        else:
+            raise NotImplementedError
+
 
 import inspect
 
@@ -2215,32 +2284,41 @@ class Powerplant_manager(object):
         # Store pairs of (|J⟩, E_pt2_J) -> By end of inner loop, partial contribution of |J⟩ to E_pt2 is fully computed
         # As in [Tubman et al., `18] they instead store individual numerator conts separately, do a sort by bistring, then aggregate across bitstrings
 
-        # Pass over internal determinants
-        for I, det_I in enumerate(self.psi_internal):
-            # Inner pass (for each |I⟩) generates all excitations satisfying constraint |C⟩ from |I⟩
-            # Triplet constrained singles
-            for det_J in Excitation(self.N_orb).triplet_constrained_single_excitations_from_det(
-                det_I, C
-            ):
-                for idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_ij_indices(
-                    det_I, det_J
+        if self.H_i_generator.driven_by == "determinant":
+            # Pass over internal determinants
+            for I, det_I in enumerate(self.psi_internal):
+                # Inner pass (for each |I⟩) generates all excitations satisfying constraint |C⟩ from |I⟩
+                # Triplet constrained singles
+                for det_J in Excitation(self.N_orb).triplet_constrained_single_excitations_from_det(
+                    det_I, C
                 ):
-                    nominator_conts_table[det_J] += (
-                        c[I] * phase * self.H_i_generator.Hamiltonian_2e_driver.H_ijkl_orbital(*idx)
-                    )
-                nominator_conts_table[det_J] += c[
-                    I
-                ] * self.H_i_generator.Hamiltonian_1e_driver.H_ij(det_I, det_J)
-            # Triplet-constrained doubles
-            for det_J in Excitation(self.N_orb).triplet_constrained_double_excitations_from_det(
-                det_I, C
-            ):
-                for idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_ij_indices(
-                    det_I, det_J
+                    for idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_ij_indices(
+                        det_I, det_J
+                    ):
+                        nominator_conts_table[det_J] += (
+                            c[I]
+                            * phase
+                            * self.H_i_generator.Hamiltonian_2e_driver.H_ijkl_orbital(*idx)
+                        )
+                    nominator_conts_table[det_J] += c[
+                        I
+                    ] * self.H_i_generator.Hamiltonian_1e_driver.H_ij(det_I, det_J)
+                # Triplet-constrained doubles
+                for det_J in Excitation(self.N_orb).triplet_constrained_double_excitations_from_det(
+                    det_I, C
                 ):
-                    nominator_conts_table[det_J] += (
-                        c[I] * phase * self.H_i_generator.Hamiltonian_2e_driver.H_ijkl_orbital(*idx)
-                    )
+                    for idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_ij_indices(
+                        det_I, det_J
+                    ):
+                        nominator_conts_table[det_J] += (
+                            c[I]
+                            * phase
+                            * self.H_i_generator.Hamiltonian_2e_driver.H_ijkl_orbital(*idx)
+                        )
+        elif self.H_i_generator.driven_by == "integral":
+            raise NotImplementedError
+        else:
+            raise NotImplementedError
 
         # Remove contributions of internal determinants TODO: This is probably dirty
         for det_I in self.psi_internal:
