@@ -871,25 +871,6 @@ class Test_Selection(Timing, unittest.TestCase):
 
         self.assertAlmostEqual(E_ref, E, places=6)
 
-    def test_f2_631g_1p10det_chunked(self):
-        fcidump_path = "f2_631g.FCIDUMP"
-        wf_path = "f2_631g.1det.wf"
-        # No a value optained with QP
-        E_ref = -198.72696793971556
-        # Selection 10 determinant
-
-        n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
-
-        # Chunk the connected space by 1000 at a time, so it doesn't take forever
-        E, _, _ = selection_step(lewis.comm, lewis, n_ord, psi_coef, psi_det, 10, 1000)
-
-        self.assertAlmostEqual(E_ref, E, places=6)
-
-        # What if chunk_size > len(psi_connected)?
-        E, _, _ = selection_step(lewis.comm, lewis, n_ord, psi_coef, psi_det, 10, 100000)
-
-        self.assertAlmostEqual(E_ref, E, places=6)
-
 
 if __name__ == "__main__":
     try:

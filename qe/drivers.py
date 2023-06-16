@@ -1610,7 +1610,7 @@ class Hamiltonian_generator(object):
         d_one_e_integral: One_electron_integral,
         d_two_e_integral: Two_electron_integral,
         psi_internal: Psi_det,
-        driven_by="integral",
+        driven_by="determinant",
     ):
         self.comm = comm
         self.world_size = self.comm.Get_size()  # No. of processes running
@@ -2261,15 +2261,17 @@ class Powerplant_manager(object):
         E_pt2_J = nominator_conts_table.values()
         nominator_conts = np.array(list(E_pt2_J), dtype="float")
         E_var = self.E(psi_coef)  # Pre-compute variational energy
+        # Will have to return anyway
+        psi_connected_C = [det_J for det_J in nominator_conts_table.keys()]
         denominator_conts = np.divide(
             1.0,
-            E_var
-            - np.array([self.H_i_generator.H_ii(det_J) for det_J in nominator_conts_table.keys()]),
+            E_var - np.array([self.H_i_generator.H_ii(det_J) for det_J in psi_connected_C]),
         )
 
         # Compute E_pt2 contributions of this subset of connected space
         # Do this einsum in place, then Reduce later
-        return np.einsum(
+        # Return the determinants we generated as well for the selection step
+        return psi_connected_C, np.einsum(
             "i,i,i -> i", nominator_conts, nominator_conts, denominator_conts
         )  # vector * vector * vector -> scalar
 
@@ -2290,7 +2292,8 @@ class Powerplant_manager(object):
         # Generate chunks of the connected space by constraints
         for C in self.gen_local_constraints():
             # Track E_pt2 contributions of determinants in the current chunk of the connected space
-            E_pt2_conts += sum(self.psi_external_pt2(C, psi_coef))
+            _, E_pt2_conts_local = self.psi_external_pt2(C, psi_coef)
+            E_pt2_conts += sum(E_pt2_conts_local)
 
         # Sum in place -> MPI.Allreduce call
         # Equivalent to MPI AllGather + sum. Do this because we can't store the full external space
@@ -2312,9 +2315,8 @@ def selection_step(
     psi_coef: Psi_coef,
     psi_det: Psi_det,
     n,
-    chunk_size=None,
 ) -> Tuple[Energy, Psi_coef, Psi_det]:
-    # 1. Each MPI rank has a portion of external determinants and computes their E_pt2 contribution (size `chunk_size' at a time)
+    # 1. Each MPI rank has a subset of constraints and computes E_pt2 contributions of determinants in this constraint (disjoint partitioning)
     # 2. Take the n determinants (across ranks) who have the biggest contribution and add it the wave function psi
     # 3. Diagonalize H corresponding to this new wave function to get the new variational energy, and new psi_coef
 
@@ -2322,9 +2324,6 @@ def selection_step(
     # -> Go to 1., stop when E_pt2 < Threshold || N < Threshold
     # See example of chained call to this function in `test_f2_631g_1p5p5det`
 
-    # Assumption: No. of desired determinants n assumed to be less than the chunk_size to produce at a time
-    if chunk_size is not None:
-        assert chunk_size >= n
     # Instance of Powerplant manager class for computing E_pt2 energies
     PP_manager = Powerplant_manager(comm, lewis)
 
@@ -2333,9 +2332,7 @@ def selection_step(
 
     # 1.
     # Compute the local best E_pt2 contributions + associated dets
-    local_best_dets, local_best_energies = local_sort_pt2_energies(
-        PP_manager, psi_coef, psi_det, n, chunk_size
-    )
+    local_best_dets, local_best_energies = local_sort_pt2_energies(PP_manager, psi_coef, psi_det, n)
 
     # 2.
     # Global sort local contributions to get global best E_pt2 contributions + dets
@@ -2360,24 +2357,32 @@ def selection_step(
 
 
 def local_sort_pt2_energies(
-    PP_manager: Powerplant_manager, psi_coef: Psi_coef, psi_det: Psi_det, n, chunk_size
+    PP_manager: Powerplant_manager, psi_coef: Psi_coef, psi_det: Psi_det, n
 ):
     # Function to compute the local n best E_pt2 contributions
-    # Each rank computes the best contributions from a chunk of the connected space at a time
+    # Each rank computes the best contributions from a (disjoint) subset of the connected space, determined by constraint
 
     # Pre-allocate space to track bests from previous chunk
     local_best_energies = np.ones(n, dtype="float")
+    # TODO: Will have to think more carefully about the case when size of the constraint space is < n
     local_best_dets = [Determinant(alpha=(), beta=())] * n  # `Dummy' determinants
-    for psi_external_chunk in PP_manager.gen_local_chunk_of_connected_dets(chunk_size):
+    # TODO: This can be now done by constraint? Yes.. I think this outer loop is just changed to `gen_local_constraints'
+    for C in PP_manager.gen_local_constraints():
         # 1.
         # Compute E_pt2 contributions of current chunk of determinants
         # It is assumed that `chunk_size` is enough to fit in memory
-        psi_external_energies = PP_manager.psi_external_pt2(psi_external_chunk, psi_coef)
+        psi_connected_C, E_pt2_energies_C = PP_manager.psi_external_pt2(C, psi_coef)
 
         # 2.
         # Aggregate current E_pt2 contributions and current n `best' contributions to partial sort
-        working_energies = np.r_[psi_external_energies, local_best_energies]
-        working_dets = psi_external_chunk + local_best_dets
+        if len(E_pt2_energies_C) > 0:
+            working_energies = np.r_[E_pt2_energies_C, local_best_energies]
+            working_dets = psi_connected_C + local_best_dets
+        else:
+            # TODO: Maybe a bit hacky, but working fix for now... Argpartition throws error if no dets are generated in this constraint
+            working_energies = np.r_[1, local_best_energies]
+            # Add dummy
+            working_dets = [Determinant(alpha=(), beta=())] + local_best_dets
         # Update `local' n largest magnitude E_pt2 contributions from working chunk -> indices of top n determinants
         # E_pt2 < 0, so n `smallest' are actually the largest magnitude contributors
         local_idx = np.argpartition(working_energies, n)[:n]
@@ -2404,6 +2409,7 @@ def global_sort_pt2_energies(comm, local_best_dets: Psi_det, local_best_energies
         global_idx = np.argpartition(aggregated_energies, n)[:n]
 
         # Now, save global best E_pt2 contributors
+        # TODO: I guess this guy below is not getting use?
         global_best_energies = np.array(aggregated_energies[global_idx])
         global_best_dets = [aggregated_dets[i] for i in global_idx]
     else:
