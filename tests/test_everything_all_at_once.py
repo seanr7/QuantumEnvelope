@@ -384,13 +384,10 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
         # 1. For each constraint, pass through wf
         n_orb, psi = self.f2_631g_1det_wf_norb
         for C in self.generate_all_constraints(len(getattr(psi[0], spin)), n_orb):
-            print(C)
             # Initialiaze default dict with keys as dets in wf, store all constrained singles + doubles with generator
             sd_by_C = defaultdict(list, {det_I: [] for det_I in psi})
             for det_I in psi:
                 # For this det_I, generate all singles + doubles subject to constraint
-                print(det_I)
-                # sd_by_C[det_I].extend([det_J for det_J in Excitation(n_orb).triplet_constrained_single_excitations_from_det(det_I, C, spin)])
                 sd_by_C[det_I].extend(
                     [
                         det_J
@@ -408,7 +405,6 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
                     ref_det_I_conn_by_C = [
                         det_J for det_J in ref_det_I_conn if (self.check_constraint(det_J) == C)
                     ]
-                    print(len(ref_det_I_conn_by_C), len(det_I_conn_by_C))
                     self.assertListEqual(sorted(ref_det_I_conn_by_C), sorted(det_I_conn_by_C))
 
 
