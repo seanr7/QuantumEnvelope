@@ -407,6 +407,15 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
                     ]
                     self.assertListEqual(sorted(ref_det_I_conn_by_C), sorted(det_I_conn_by_C))
 
+    def test_constraint_dispatch(self):
+        n_orb, psi = self.f2_631g_1det_wf_norb
+        C_count = 0
+        _, estimated_constraint_sizes = Excitation(n_orb).dispatch_local_constraints(psi)
+        for C in self.generate_all_constraints(len(getattr(psi[0], "alpha")), n_orb):
+            ref_connected_from_C = self.f2_631g_1det_connected_by_constraint[C]
+            assert len(ref_connected_from_C) == estimated_constraint_sizes[C_count]
+            C_count += 1
+
 
 class Test_Integral_Driven_Categories(Test_Minimal):
     @property
