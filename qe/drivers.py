@@ -543,7 +543,7 @@ class Excitation:
         # Return constraint as |Spin_determinant|
         return spindet[-3:]
 
-    # TODO: Next, MPI function to distribute work
+    # TODO: Next, optimization of this + testing (Should do some caching during tests this is super slow to generate again and again...)
     def dispatch_local_constraints(self, psi: Psi_det) -> List[Spin_determinant]:
         """MPI function, perform static load balancing + distribution of triplet-constraints to MPI ranks
         Work is roughly distributed based on the number of connected determinants satisfying a particular constraint
