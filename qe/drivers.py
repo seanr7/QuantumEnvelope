@@ -545,51 +545,54 @@ class Excitation:
 
     # TODO: Next, MPI function to distribute work
     def dispatch_local_constraints(self, psi: Psi_det) -> List[Spin_determinant]:
-        """MPI function, perform load balancing + distribution of `m'-constraints
+        """MPI function, perform static load balancing + distribution of triplet-constraints to MPI ranks
+        Work is roughly distributed based on the number of connected determinants satisfying a particular constraint
         Inputs:
         :param psi: List of internal determinants (global)
 
         Outputs:
         :param C_loc: Local constraints"""
+
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
-        # Initialize array to store workload of each rank
+        # Initialize array to track workload of each rank
         W = np.zeros(shape=(comm.Get_size(),), dtype="i")
         C_loc = []  # Pre-allocate space for local constraints
         na = len(getattr(psi[0], "alpha"))  # No. of alpha electrons
         nb = len(getattr(psi[0], "beta"))  # No. of beta electrons
         # Pass through all triplet constraints to distribute
-        H = []  # For saving work dist
+        H = []  # Track work dist
+        # H = defaultdict(
+        #     int,
+        #     {con: [] for con in self.generate_all_constraints(na, self.n_orb)},
+        # )  # Track work dist TODO: Dict is too slow..
         for C in self.generate_all_constraints(na):
             B_upper = set(range(min(C) + 1, self.n_orb))  # Upper bitmask
             B_lower = set(range(min(C)))  # Lower bitmask
+            h = 0  # Track work of this constraint
             for det in psi:
                 det_a = getattr(det, "alpha")
                 constraint_orbitals_occupied = set(det_a) & set(C)
                 nonconstrained_orbitals_occupied = (set(det_a) & B_upper) - set(C)
-
-                # Calculate number of alpha particles used in a single satisfying C
-                # For readability, n_particles = [np_a, np_b, np_aa, np_bb, np_ab]
-                # If doubles (e.g., np_aa) refers to number of particle pairs
-                if len(constraint_orbitals_occupied) == 0:  # No excitations will satisfy C
+                # n_particles = [np_a, np_b, np_aa, np_bb, np_ab]
+                # Number of particles (or pairs) that (could possibly) involve an excitation satisfying C
+                if len(constraint_orbitals_occupied) == 0:
+                    # No excitations will satisfy C -> Pass
                     n_particles = np.zeros(5, dtype="i")
-                elif (
-                    len(constraint_orbitals_occupied) == 1
-                ):  # Excitation (if any) must be double alpha
+                elif len(constraint_orbitals_occupied) == 1:
+                    # To satisfy C, excitation must be aa (into empty constraint orbitals)
                     n_particles = np.array([0, 0, 1, 0, 0], dtype="i")
                 elif len(constraint_orbitals_occupied) == 2:
-                    # Only one single particle possible; must be alpha -> No single beta
-                    na_orbs_unocc_lower = B_lower - set(det_a)  # One e in aa must go here
-                    # No double beta
-                    # For ab doubles, a must go one place, so number of pairs is 1 * (self.n_orb - nb)
+                    # To satisfy C, only possible single is a, must excite into empty constraint orbital
+                    na_orbs_unocc_lower = B_lower - set(det_a)
+                    # No bb; for ab doubles, a must excite into empty constraint orbital, so 1 * (self.n_orb - nb) ab pairs
                     n_particles = np.array(
                         [1, 0, len(na_orbs_unocc_lower), 0, (self.n_orb - nb)], dtype="i"
                     )
                 elif len(constraint_orbitals_occupied) == 3:
-                    # Any alpha excitation into `lower` unoccupied alpha orbitals
-                    # Any aa double into lower orbitals
+                    # To satisfy C, any a or aa excitaion into `lower` unoccupied alpha orbitals
+                    # All possible b or bb excitations satisfy C
                     na_orbs_unocc_lower = B_lower - set(det_a)
-                    # Any beta single, any bb double
                     # Divide some things by 2 to avoid repeats due to permuation (e.g., (p1, p2) = (1, 2) <-> (p1, p2) = (2, 1))
                     n_particles = np.array(
                         [
@@ -602,22 +605,22 @@ class Excitation:
                         dtype="i",
                     )
 
-                # Calculate number of alpha holes used in a single satisfying C
-                # For readability, n_holwa = [nh_a, nh_b, nh_aa, nh_bb, nh_ab]
-                if len(nonconstrained_orbitals_occupied) > 2:  # No excitations will satisfy C
+                # n_holes = [nh_a, nh_b, nh_aa, nh_bb, nh_ab]
+                # Number of holes (or pairs) that (could possibly) involve an excitation satisfying C
+                if len(nonconstrained_orbitals_occupied) > 2:
+                    # No excitations will satisfy C -> Pass
                     n_holes = np.zeros(5, dtype="i")
-                elif len(nonconstrained_orbitals_occupied) == 2:  # Excitation must be double alpha
+                elif len(nonconstrained_orbitals_occupied) == 2:
+                    # To satisfy C, excitation must be aa (out of `higher` non-constraint orbitals)
                     n_holes = np.array([0, 0, 1, 0, 0], dtype="i")
                 elif len(nonconstrained_orbitals_occupied) == 1:
-                    # Only one alpha single will satisfy C, no beta singles
-                    # aa out of `lower` occupied a orbitals and this one higher nonconstrained orbital
+                    # To satisfy C, only possible single is a, must excite out of `higher` constraint orbitals
                     na_orbs_occ_lower = set(det_a) & B_lower
-                    # No bb
-                    # ab with a in this one higher occupied nonconstraint orbital, so really 1 * len(det_b)
+                    # No bb; for ab doubles, a must excite out of `higher` constraint orbital, so 1 * nb ab pairs
                     n_holes = [1, 0, len(na_orbs_occ_lower), 0, nb]
                 elif len(nonconstrained_orbitals_occupied) == 0:
-                    # Can excite any of the `lower` alpha e
-                    # Any b single or bb double
+                    # To satisfy C, can excite out of any `lower` occupied alpha orbitals
+                    # All possible b or bb excitations satisfy C
                     na_orbs_occ_lower = set(det_a) & B_lower
                     n_holes = [
                         len(na_orbs_occ_lower),
@@ -626,16 +629,19 @@ class Excitation:
                         nb * (nb - 1) / 2,
                         len(na_orbs_occ_lower) * nb,
                     ]
+
                 # Number of singly/doubly connected determinants to |det> satisfying constraint C
                 #   Simply (per spin type) number of holes * particles that will yield an excitation in C
-                h = np.dot(n_particles, n_holes)
+                h += np.dot(n_particles, n_holes)  # Add to work thus far
 
-            H.append(h)
-            if h > 0:  # Handle case where no dets satisfy C
-                _, loc = comm.allreduce((W[rank], rank), MPI.MINLOC)
-                if loc == comm.Get_rank():
+            if h > 0:  # Handle case where no dets satisfy C.. No one will do it
+                _, loc = comm.allreduce(
+                    (W[rank], rank), MPI.MINLOC
+                )  # This is a tuple, so use python command
+                if loc == rank:  # Rank with lowest amount of work collects current constraint
                     C_loc.append(C)
-                    W[rank] += h
+                    H.append(h)
+                    W[rank] += h  # Add h to the amount of `work` rank has
 
         # Return local constraints and distribution of work
         return C_loc, H
@@ -657,6 +663,8 @@ class Excitation:
 #   \__,_|_| |_|\__,_| \_|  \__,_|_|   \__|_|\___|_|\___||___/
 #
 #
+
+
 class PhaseIdx(object):
     @staticmethod
     def single_phase(sdet_i, sdet_j, h, p):
