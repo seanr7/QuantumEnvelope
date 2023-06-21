@@ -1090,10 +1090,10 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 excited_det = Determinant(excited_spindet, getattr(det, "beta"))
             else:
                 excited_det = Determinant(getattr(det, "alpha"), excited_spindet)
-            # TODO: Leave as before for now, to keep it working for other categories with singles...
-            if exci.check_constraint(excited_det) == C:  # Check if excited det satisfies constraint
-                phase = phasemod * PhaseIdx.single_phase(getattr(det, spin), excited_spindet, h, p)
-                yield (I, excited_det), phase
+            # Assert excited det satisfies constraint and yield
+            assert exci.check_constraint(excited_det) == C
+            phase = phasemod * PhaseIdx.single_phase(getattr(det, spin), excited_spindet, h, p)
+            yield (I, excited_det), phase
 
     @staticmethod
     def do_double_samespin(
@@ -1718,9 +1718,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 # Now, occ is necessarily an alpha orbital, have some restrictions based on it
                 if (occ not in set(C)) & (occ > a1):
                     # If occ (alpha) is \not\in C and > a1 -> Excitation pairs related by <ij|kl> necessarily satisfy a different constraint
-                    # Normally, would only yield pairs where occ orbitals is beta spin. But this is not possible for category D, so we pasas
-                    # So, in this case only yield related pairs where the occ orbital is beta spin
-                    # Get `higher` orbitals not in C -> must be empty in the excitation pairs to satisfy C
+                    # Normally, would only yield pairs where occ orbitals is beta spin. But this is not possible for category D, so we pass
                     return None
                 else:
                     # Occ is necessarily either in C or < a1, so don't demand its unoccupied
@@ -1895,109 +1893,114 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "E"
 
-        def do_single_E_pt2(i, k, l, psi_i, C, spindet_occ_i, oppspindet_occ_i, spin, exci):
-            # Get indices of determinants that are possibly related by excitations from external --> internal space
-            # phasemod, occ, h, p = -1, i, k, l
-            det_indices_1 = (
-                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
-                    spindet_occ_i, oppspindet_occ_i, {"same": {i, k}}, {"same": {l}}
+        def do_single_E_pt2(occ, h, p, psi, C, spindet_occ, oppspindet_occ, spin, exci):
+            # Phasemod is always -1 in category E
+            # Only same-spin single excitations are allowed
+            a1 = min(C)  # `Lowest` constraint orbital
+            if spin == "alpha":  # If p -> h excitation is alpha spin
+                # Pre-processing; will this integral contribute to any (I, J) pairs s.to C?
+                if h in C:
+                    # Excitation pair will not satisfy C if electron is excited out of C
+                    return None
+                if (p not in C) and (p > a1):
+                    # Resulting excitation pair will satisfy `higher` constraint
+                    return None
+                elif (p not in C) and (p < a1):
+                    # All excitation pairs related by <ij|kl> must already satisfy C
+                    # Since we are in category E, we need only do the case when occ is same spin as (h, p) pair
+                    # Here, excitation is alpha -> occ is alpha, further restrictions required
+                    if (occ not in C) & (occ > a1):
+                        # If occ (alpha) is \not\in C and > a1 -> Excitation pairs related by <ij|kl> necessarily satisfy a different constraint
+                        # Normally, would only yield pairs where occ orbitals is beta spin. But this is not possible for category E, so we pass
+                        return None
+                    else:
+                        # Here, occ is either \in C, or \not\in C and < a1
+                        # Now, can yield related pairs where occ is alpha spin
+                        higher_unocc_orbitals = (
+                            (set(range(a1 + 1, exci.n_orb)) - (set(C) | {h}))
+                        ) | {p}
+                        # Related pairs must be:
+                        #   Occupied in: (alpha) h, C = {a1, a2, a3}, occ (beta) none,
+                        #   Empty in: (alpha) p, {a1 + 1, a1 + 2, ... N_orb - 1} - {a1, a2, a3, h} (beta) none
+                        # p \not\in C in this instance, and < a1, so must include in `empty` orbital set
+                        det_indices = Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                            spindet_occ,
+                            {},
+                            {"same": ({occ, h} | set(C))},
+                            {"same": higher_unocc_orbitals},
+                        )
+                        yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
+                            det_indices, -1, occ, h, p, psi, C, spin, exci
+                        )
+                else:
+                    # By above -> p \in C in this instance
+                    # All excitation pairs related by <ij|kl> must be occupied in C - {p}
+                    if (occ not in set(C)) & (occ > a1):
+                        # If occ (alpha) is \not\in C and > a1 -> Excitation pairs related by <ij|kl> necessarily satisfy a different constraint
+                        # Normally, would only yield pairs where occ orbitals is beta spin. But this is not possible for category E, so we pass
+                        return None
+                    else:
+                        # Here, occ is either \in C, or \not\in C and < a1
+                        # Now, can yield related pairs where occ is alpha
+                        higher_unocc_orbitals = (
+                            set(range(a1 + 1, exci.n_orb)) - ((set(C) - {p}) | {h})
+                        ) | {p}
+                        # Related pairs must be:
+                        #   Occupied in: (alpha) h,  C - {p}, occ (beta) none,
+                        #   Empty in: (alpha) p, {a1 + 1, a1 + 2, ... N_orb - 1} - ((C - {p}) | {h}) (beta) none
+                        # p \not\in C in this instance, and < a1, so must include in `empty` orbital set
+                        det_indices = Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                            spindet_occ,
+                            {},
+                            {"same": ({occ, h} | (set(C) - {p}))},
+                            {"same": higher_unocc_orbitals},
+                        )
+                        yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
+                            det_indices, -1, occ, h, p, psi, C, spin, exci
+                        )
+            else:  # spin == "beta"
+                # All excitation pairs related by <ij|kl> must already satisfy C
+                # Necessarily, integrals in this category only invoke same-spin single excitations
+                # So, in this instance, occ is beta spin and has no restrictions on it
+                det_indices = (
+                    Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                        spindet_occ,
+                        oppspindet_occ,
+                        {"same": {h, occ}, "opposite": set(C)},
+                        {"same": {p}, "opposite": (set(range(a1 + 1, exci.n_orb)) - set(C))},
+                    )
                 )
-            )
-            yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                det_indices_1, -1, i, k, l, psi_i, C, spin, exci
-            )
-            # Get indices of determinants that are possibly related by excitations from external --> internal space
-            # phasemod, occ, h, p = -1, i, l, k
-            det_indices_2 = (
-                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
-                    spindet_occ_i, oppspindet_occ_i, {"same": {i, l}}, {"same": {k}}
+                yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
+                    det_indices, -1, occ, h, p, psi, C, spin, exci
                 )
-            )
-            yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                det_indices_2, -1, i, l, k, psi_i, C, spin, exci
-            )
 
         # doubles, ia(b) to ka(b) and jb(a) to lb(a)
         for hp1, hp2 in product(permutations([i, k], 2), permutations([j, l], 2)):
             yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin_pt2(
-                hp1, hp2, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, "alpha", exci
+                hp1, hp2, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci
             )
             yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin_pt2(
-                hp1, hp2, psi_i, C, spindet_b_occ_i, spindet_a_occ_i, "beta", exci
+                hp1, hp2, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci
             )
 
         if i == j:  # <ii|kl> = <ii|lk> = <ik|li> -> - <ik|il>
-            # singles, ka(b) to la(b) where ia(b) is occupied
-            yield from do_single_E_pt2(
-                i,
-                k,
-                l,
-                psi_i,
-                C,
-                spindet_a_occ_i,
-                spindet_b_occ_i,
-                "alpha",
-                exci,
-            )
-            yield from do_single_E_pt2(
-                i,
-                k,
-                l,
-                psi_i,
-                C,
-                spindet_b_occ_i,
-                spindet_a_occ_i,
-                "beta",
-                exci,
-            )
+            # singles, ka(b) <-> la(b), occ = ia(b)
+            yield from do_single_E_pt2(i, k, l, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
+            yield from do_single_E_pt2(i, l, k, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
+            yield from do_single_E_pt2(i, k, l, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
+            yield from do_single_E_pt2(i, l, k, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
         elif j == k:  # <ij|jl> = - <ij|lj>
-            # singles, ia(b) to la(b) where ja(b) is occupied
-            yield from do_single_E_pt2(
-                j,
-                i,
-                l,
-                psi_i,
-                C,
-                spindet_a_occ_i,
-                spindet_b_occ_i,
-                "alpha",
-                exci,
-            )
-            yield from do_single_E_pt2(
-                j,
-                i,
-                l,
-                psi_i,
-                C,
-                spindet_b_occ_i,
-                spindet_a_occ_i,
-                "beta",
-                exci,
-            )
+            # singles, ia(b) <-> la(b), occ = ja(b)
+            yield from do_single_E_pt2(j, i, l, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
+            yield from do_single_E_pt2(j, l, i, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
+            yield from do_single_E_pt2(j, i, l, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
+            yield from do_single_E_pt2(j, l, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
         else:  # k == l, <ij|kk> = <ji|kk> = <jk|ki> -> -<jk|ik>
-            # singles, ja(b) to ia(b) where ka(b) is occupied
-            yield from do_single_E_pt2(
-                k,
-                i,
-                j,
-                psi_i,
-                C,
-                spindet_a_occ_i,
-                spindet_b_occ_i,
-                "alpha",
-                exci,
-            )
-            yield from do_single_E_pt2(
-                k,
-                i,
-                j,
-                psi_i,
-                C,
-                spindet_b_occ_i,
-                spindet_a_occ_i,
-                "beta",
-                exci,
-            )
+            # singles, ja(b) <-> ia(b) occ = ka(b)
+            yield from do_single_E_pt2(k, i, j, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
+            yield from do_single_E_pt2(k, j, i, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
+            yield from do_single_E_pt2(k, i, j, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
+            yield from do_single_E_pt2(k, j, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
 
     @staticmethod
     def category_F(
