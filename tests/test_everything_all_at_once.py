@@ -440,10 +440,6 @@ class Test_Integral_Driven_Categories(Test_Minimal):
     @property
     def integral_by_category_PT2(self):
         # Bin each integral (with the 'idx4' representation) by integrals category
-        """
-        >>> Test_Integral_Driven_Categories().integral_by_category['A']
-        [(0, 0, 0, 0), (1, 1, 1, 1), (2, 2, 2, 2), (3, 3, 3, 3), (4, 4, 4, 4), (5, 5, 5, 5)]
-        """
         _, _, d_two_e_integral = self.psi_and_integral_PT2
         d = defaultdict(list)
         for idx in d_two_e_integral:
