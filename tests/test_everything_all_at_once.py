@@ -278,9 +278,11 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
     @property
     def psi_and_integral_PT2(self):
         # minimal psi_and_integral, psi_i != psi_j
-        psi_i = [Determinant((0, 1), (0, 1)), Determinant((1, 2), (1, 2))]
-        psi_j = list(chain.from_iterable(Excitation(4).get_chunk_of_connected_determinants(psi_i)))
-        _, d_two_e_integral = self.psi_and_integral
+        psi_i = [Determinant((0, 1, 2), (0, 1, 2)), Determinant((1, 2, 3), (1, 2, 3))]
+        psi_j = list(chain.from_iterable(Excitation(6).get_chunk_of_connected_determinants(psi_i)))
+        d_two_e_integral = {}
+        for i, j, k, l in product(range(6), repeat=4):
+            d_two_e_integral[compound_idx4(i, j, k, l)] = 1
         return psi_i, psi_j, d_two_e_integral
 
     def test_equivalence(self):
@@ -436,6 +438,21 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         return d
 
     @property
+    def integral_by_category_PT2(self):
+        # Bin each integral (with the 'idx4' representation) by integrals category
+        """
+        >>> Test_Integral_Driven_Categories().integral_by_category['A']
+        [(0, 0, 0, 0), (1, 1, 1, 1), (2, 2, 2, 2), (3, 3, 3, 3), (4, 4, 4, 4), (5, 5, 5, 5)]
+        """
+        _, _, d_two_e_integral = self.psi_and_integral_PT2
+        d = defaultdict(list)
+        for idx in d_two_e_integral:
+            i, j, k, l = compound_idx4_reverse(idx)
+            cat = integral_category(i, j, k, l)
+            d[cat].append((i, j, k, l))
+        return d
+
+    @property
     def reference_indices_by_category(self):
         # Bin the indices (ab, idx4, phase) of the reference determinant implemetation by integrals category
         """
@@ -555,19 +572,33 @@ class Test_Integral_Driven_Categories(Test_Minimal):
 
     def test_category_C_PT2(self):
         psi_i, psi_j, _ = self.psi_and_integral_PT2
+        # Will need hash to map yielding determinants to a particular index
         det_to_index_j = {det: i for i, det in enumerate(psi_j)}
-        indices_PT2 = []
         (
             spindet_a_occ_i,
             spindet_b_occ_i,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
-        for i, j, k, l in self.integral_by_category["C"]:
-            for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_C(
-                (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, Excitation(4)
-            ):
-                indices_PT2.append(((a, b), (i, j, k, l), phase))
-        indices_PT2 = self.simplify_indices(indices_PT2)
-        self.assertListEqual(indices_PT2, self.reference_indices_by_category_PT2["C"])
+        # Pass over constraints, pass over integrals
+        for con in Excitation(6).generate_all_constraints(3):
+            indices_PT2_con = []  # Reset list for each constraint
+            for i, j, k, l in self.integral_by_category_PT2["C"]:
+                print(f"Constraint: {con}, Integral: {(i, j, k, l)}")
+                for (I, det_J), phase in Hamiltonian_two_electrons_integral_driven.category_C_pt2(
+                    (i, j, k, l), psi_i, con, spindet_a_occ_i, spindet_b_occ_i, Excitation(6)
+                ):
+                    print((I, det_to_index_j[det_J]), (i, j, k, l), phase)
+                    indices_PT2_con.append(((I, det_to_index_j[det_J]), (i, j, k, l), phase))
+                # `indices_PT2_con` contains all ((I, J), idx, phase) s.to:
+                #   1. Integrals idx in category C;
+                #   2. Determinants J satisfy constraint con
+            indices_PT2_con = self.simplify_indices(indices_PT2_con)
+            # Now, get all reference pairs subject to constraint C
+            ref_indices_PT2_con = []
+            for ((I, J), idx, phase) in self.reference_indices_by_category_PT2["C"]:
+                if Excitation(6).check_constraint(psi_j[J]) == con:
+                    ref_indices_PT2_con.append(((I, J), idx, phase))
+
+            self.assertListEqual((indices_PT2_con), (ref_indices_PT2_con))
 
     def test_category_D(self):
         psi, _ = self.psi_and_integral
