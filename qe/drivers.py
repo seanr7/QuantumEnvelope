@@ -3422,7 +3422,6 @@ def selection_step(
     # See example of chained call to this function in `test_f2_631g_1p5p5det`
 
     # Instance of Powerplant manager class for computing E_pt2 energies
-    print("Create PP man")
     PP_manager = Powerplant_manager(comm, lewis)
 
     # Each rank generates a chunk of the external space at the time -> computes the E_pt2 contributions of its respective chunk
@@ -3430,12 +3429,10 @@ def selection_step(
 
     # 1.
     # Compute the local best E_pt2 contributions + associated dets
-    print("Computing local best")
     local_best_dets, local_best_energies = local_sort_pt2_energies(PP_manager, psi_coef, psi_det, n)
 
     # 2.
     # Global sort local contributions to get global best E_pt2 contributions + dets
-    print("Computing global best")
     global_best_dets = global_sort_pt2_energies(comm, local_best_dets, local_best_energies, n)
 
     # 3.
@@ -3453,7 +3450,6 @@ def selection_step(
     )
 
     # Return new E_var, psi_coef, and extended wavefunction
-    print("New pt2!")
     return (*Powerplant_manager(comm, lewis_new).E_and_psi_coef, psi_det_extented)
 
 
