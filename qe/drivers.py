@@ -1381,12 +1381,27 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield (I, excited_det), phaseA * phaseB
 
     @staticmethod
-    def category_A(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i):
+    def category_A(
+        idx: Two_electron_integral_index,
+        psi_i: Psi_det,
+        det_to_index_j: Dict[Determinant, int],
+        spindet_a_occ_i: Dict[OrbitalIdx, Set[int]],
+        spindet_b_occ_i: Dict[OrbitalIdx, Set[int]],
+    ):
         """
-        psi_i psi_j: Psi_det, lists of determinants
-        idx: i,j,k,l, index of integral <ij|kl>
-        For an integral i,j,k,l of category A, yield all dependent determinant pairs (I,J) and associated phase
-        Possibilities are i = j = k = 1: (1,1,1,1). This category will contribute to diagonal elements of the Hamiltonian matrix, only
+        Return determinant pairs (I, J) connected by integral idx in category A. Used in the Hamiltonian build
+        Category A possibilties:
+            i = k = j = l: e.g., (1, 1, 1, 1)
+        Contributes only to diagonals. Necessarily, opposite spin occupied only.
+
+        Inputs:
+        :param idx:                              (i, j, k, l) index of two-electron integral
+        :param psi_i:                            List of internal determinants (wave function)
+        :param det_to_index_j:                   Hash map of determinants -> Associated indices in psi_j
+        :param spindet_a_occ_i, spindet_b_occ_i: Dictionaries mapping |OrbitalIdx| -> Indices of determinants occupied in associated orbital
+
+        Outputs:
+        For two-electron integral (i, j, k, l) in category A, return determinant pairs (I, J) \in (psi_i, psi_j) and associated phase
         """
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "A"
@@ -1405,12 +1420,27 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         yield from do_diagonal_A(i, j, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i)
 
     @staticmethod
-    def category_B(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i):
+    def category_B(
+        idx: Two_electron_integral_index,
+        psi_i: Psi_det,
+        det_to_index_j: Dict[Determinant, int],
+        spindet_a_occ_i: Dict[OrbitalIdx, Set[int]],
+        spindet_b_occ_i: Dict[OrbitalIdx, Set[int]],
+    ):
         """
-        psi_i psi_j: Psi_det, lists of determinants
-        idx: i,j,k,l, index of integral <ij|kl>
-        For an integral i,j,k,l of category B, yield all dependent determinant pairs (I,J) and associated phase
-        Possibilities are i = k < j = l: (1,2,1,2). This category will contribute to diagonal elements of the Hamiltonian matrix, only
+        Return determinant pairs (I, J) connected by integral idx in category B. Used in the Hamiltonian build
+        Category B possibilties:
+            i = k < j = l: e.g., (1, 2, 1, 2)
+        Contributes only to diagonals. Same + opposite spin occ.
+
+        Inputs:
+        :param idx:                              (i, j, k, l) index of two-electron integral
+        :param psi_i:                            List of internal determinants (wave function)
+        :param det_to_index_j:                   Hash map of determinants -> Associated indices in psi_j
+        :param spindet_a_occ_i, spindet_b_occ_i: Dictionaries mapping |OrbitalIdx| -> Indices of determinants occupied in associated orbital
+
+        Outputs:
+        For two-electron integral (i, j, k, l) in category B, return determinant pairs (I, J) \in (psi_i, psi_j) and associated phase
         """
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "B"
@@ -1440,12 +1470,30 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         yield from do_diagonal_B(i, j, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i)
 
     @staticmethod
-    def category_C(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, exci):
+    def category_C(
+        idx: Two_electron_integral_index,
+        psi_i: Psi_det,
+        det_to_index_j,
+        spindet_a_occ_i,
+        spindet_b_occ_i,
+        exci,
+    ):
         """
-        psi_i psi_j: Psi_det, lists of determinants
-        idx: i,j,k,l, index of integral <ij|kl>
-        For an integral i,j,k,l of category C, yield all dependent determinant pairs (I,J) and associated phase
-        Possibilities are i = k < j < l: (1,2,1,3), i < k < j = l: (1,3,2,3), j < i = k < l: (2,1,2,3)
+        Return determinant pairs (I, J) connected by integral idx in category C. Used in the Hamiltonian build
+        Category C possibilties:
+            i = k < j < l: e.g., (1, 2, 1, 3)
+            i < k < j = l: e.g., (1, 3, 2, 3)
+            j < i = k < l: e.g., (2, 1, 2, 3)
+        Contributes only to singles (where occ is same spin or opposite spin).
+
+        Inputs:
+        :param idx:                              (i, j, k, l) index of two-electron integral
+        :param psi_i:                            List of internal determinants (wave function)
+        :param det_to_index_j:                   Hash map of determinants -> Associated indices in psi_j
+        :param spindet_a_occ_i, spindet_b_occ_i: Dictionaries mapping |OrbitalIdx| -> Indices of determinants occupied in associated orbital
+
+        Outputs:
+        For two-electron integral (i, j, k, l) in category C, return determinant pairs (I, J) \in (psi_i, psi_j) and associated phase
         """
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "C"
@@ -1534,8 +1582,8 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         idx: Two_electron_integral_index,
         psi: Psi_det,
         C: Spin_determinant,
-        spindet_a_occ,
-        spindet_b_occ,
+        spindet_a_occ: Dict[OrbitalIdx, Set[int]],
+        spindet_b_occ: Dict[OrbitalIdx, Set[int]],
         exci,
     ):
         """
@@ -1544,13 +1592,16 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             i = k < j < l: e.g., (1, 2, 1, 3)
             i < k < j = l: e.g., (1, 3, 2, 3)
             j < i = k < l: e.g., (2, 1, 2, 3)
+        Contributes only to singles (where occ is same spin or opposite spin).
 
         Inputs:
-        :param psi: List of internal determinants
-        :param idx: (i, j, k, l) index of two-electron integral
+        :param idx:                          (i, j, k, l) index of two-electron integral
+        :param psi:                          List of internal determinants (wave function)
+        :param C:                            Constraint as |Spin_determinant|, three `highest` occupied alpha spin orbitals
+        :param spindet_a_occ, spindet_b_occ: Dictionaries mapping |OrbitalIdx| -> Indices of determinants occupied in associated orbital
 
         Outputs:
-        For two-electron integral (i, j, k, l) in category C, return determinant pairs (I, J) \in (psi, psi_connected) and associated phase
+        For two-electron integral (i, j, k, l) in category C, return determinant pairs (I, J) \in (psi, psi_connected) and associated phase s.to J satisfies C
         """
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "C"
@@ -1723,12 +1774,29 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield from do_single_C_pt2(j, k, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
 
     @staticmethod
-    def category_D(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, exci):
+    def category_D(
+        idx: Two_electron_integral_index,
+        psi_i: Psi_det,
+        det_to_index_j: Dict[Determinant, int],
+        spindet_a_occ_i: Dict[OrbitalIdx, Set[int]],
+        spindet_b_occ_i: Dict[OrbitalIdx, Set[int]],
+        exci,
+    ):
         """
-        psi_i psi_j: Psi_det, lists of determinants
-        idx: i,j,k,l, index of integral <ij|kl>
-        For an integral i,j,k,l of category D, yield all dependent determinant pairs (I,J) and associated phase
-        Possibilities are i=j=k<l (1,1,1,2), i<j=k=l (1,2,2,2)
+        Return determinant pairs (I, J) connected by integral idx in category D. For use in the Hamiltonian build
+        Category D possibilties:
+            i = j = k < l: e.g., (1, 1, 1, 2)
+            i < j = k = l: e.g., (1, 2, 2, 2)
+        Necessarily, only opposite spin excitations are allowed (e.g., occ = 1a, 1b <-> 2b)
+
+        Inputs:
+        :param idx:                              (i, j, k, l) index of two-electron integral
+        :param psi_i:                            List of internal determinants (wave function)
+        :param det_to_index_j:                   Hash map of determinants -> Associated indices in psi_j
+        :param spindet_a_occ_i, spindet_b_occ_i: Dictionaries mapping |OrbitalIdx| -> Indices of determinants occupied in associated orbital
+
+        Outputs:
+        For two-electron integral (i, j, k, l) in category D, return determinant pairs (I, J) \in (psi_i, psi_j) and associated phase
         """
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "D"
@@ -1810,8 +1878,8 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         idx: Two_electron_integral_index,
         psi: Psi_det,
         C: Spin_determinant,
-        spindet_a_occ,
-        spindet_b_occ,
+        spindet_a_occ: Dict[OrbitalIdx, Set[int]],
+        spindet_b_occ: Dict[OrbitalIdx, Set[int]],
         exci,
     ):
         """
@@ -1822,16 +1890,19 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         Necessarily, only opposite spin excitations are allowed (e.g., occ = 1a, 1b <-> 2b)
 
         Inputs:
-        :param psi: List of internal determinants
-        :param idx: (i, j, k, l) index of two-electron integral
+        :param idx:                          (i, j, k, l) index of two-electron integral
+        :param psi:                          List of internal determinants (wave function)
+        :param C:                            Constraint as |Spin_determinant|, three `highest` occupied alpha spin orbitals
+        :param spindet_a_occ, spindet_b_occ: Dictionaries mapping |OrbitalIdx| -> Indices of determinants occupied in associated orbital
 
         Outputs:
-        For two-electron integral (i, j, k, l) in category D, return determinant pairs (I, J) \in (psi, psi_connected) and associated phase
+        For two-electron integral (i, j, k, l) in category D, return determinant pairs (I, J) \in (psi, psi_connected) and associated phase s.to J satisfies C
         """
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "D"
 
         def do_single_D_pt2(occ, h, p, psi, C, spindet_occ, oppspindet_occ, spin, exci):
+            # TODO: Re-factor s.t. static part and part dep on psi are separate
             # Phasemod is always +1 in category D
             # Only opposite-spin single excitations are allowed
             a1 = min(C)  # `Lowest` constraint orbital
@@ -1921,12 +1992,30 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield from do_single_D_pt2(j, i, j, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
 
     @staticmethod
-    def category_E(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, exci):
+    def category_E(
+        idx: Two_electron_integral_index,
+        psi_i: Psi_det,
+        det_to_index_j: Dict[Determinant, int],
+        spindet_a_occ_i: Dict[OrbitalIdx, Set[int]],
+        spindet_b_occ_i: Dict[OrbitalIdx, Set[int]],
+        exci,
+    ):
         """
-        psi_i psi_j: Psi_det, lists of determinants
-        idx: i,j,k,l, index of integral <ij|kl>
-        For an integral i,j,k,l of category E, yield all dependent determinant pairs (I,J) and associated phase
-        Possibilities are i=j<k<l (1,1,2,3), i<j=k<l (1,2,2,3), i<j<k=l (1,2,3,3)
+        Return determinant pairs (I, J) connected by integral idx in category E. For use in the Hamiltonian build
+        Category E possibilties:
+            i = j < k < l: e.g., (1, 1, 2, 3)
+            i < j = k < l: e.g., (1, 2, 2, 3)
+            i < j < k = l: e.g., (1, 2, 3, 3)
+        This category contributes to single (where occ is same-spin, necessarily) and double (opposite-spin) excitation pairs
+
+        Inputs:
+        :param idx:                              (i, j, k, l) index of two-electron integral
+        :param psi_i:                            List of internal determinants (wave function)
+        :param det_to_index_j:                   Hash map of determinants -> Associated indices in psi_j
+        :param spindet_a_occ_i, spindet_b_occ_i: Dictionaries mapping |OrbitalIdx| -> Indices of determinants occupied in associated orbital
+
+        Outputs:
+        For two-electron integral (i, j, k, l) in category E, return determinant pairs (I, J) \in (psi_i, psi_j) and associated phase
         """
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "E"
@@ -2042,8 +2131,8 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         idx: Two_electron_integral_index,
         psi: Psi_det,
         C: Spin_determinant,
-        spindet_a_occ,
-        spindet_b_occ,
+        spindet_a_occ: Dict[OrbitalIdx, Set[int]],
+        spindet_b_occ: Dict[OrbitalIdx, Set[int]],
         exci,
     ):
         """
@@ -2055,11 +2144,13 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         This category contributes to single (where occ is same-spin, necessarily) and double (opposite-spin) excitation pairs
 
         Inputs:
-        :param psi: List of internal determinants
-        :param idx: (i, j, k, l) index of two-electron integral
+        :param idx:                          (i, j, k, l) index of two-electron integral
+        :param psi:                          List of internal determinants (wave function)
+        :param C:                            Constraint as |Spin_determinant|, three `highest` occupied alpha spin orbitals
+        :param spindet_a_occ, spindet_b_occ: Dictionaries mapping |OrbitalIdx| -> Indices of determinants occupied in associated orbital
 
         Outputs:
-        For two-electron integral (i, j, k, l) in category E, return determinant pairs (I, J) \in (psi, psi_connected) and associated phase
+        For two-electron integral (i, j, k, l) in category E, return determinant pairs (I, J) \in (psi, psi_connected) and associated phase s.to J satisfies C
         """
 
         i, j, k, l = idx
@@ -2077,11 +2168,12 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 if (p not in C) and (p > a1):
                     # Resulting excitation pair will satisfy `higher` constraint
                     return None
-                elif (p not in C) and (p < a1):
+                if (p not in C) and (p < a1):
                     # All excitation pairs related by <ij|kl> must already satisfy C
                     # Since we are in category E, we need only do the case when occ is same spin as (h, p) pair
                     # Here, excitation is alpha -> occ is alpha, further restrictions required
                     if (occ not in C) & (occ > a1):
+                        # TODO: Flatten this with above if
                         # If occ (alpha) is \not\in C and > a1 -> Excitation pairs related by <ij|kl> necessarily satisfy a different constraint
                         # Normally, would only yield pairs where occ orbitals is beta spin. But this is not possible for category E, so we pass
                         return None
@@ -2177,24 +2269,33 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
 
     @staticmethod
     def category_F(
-        idx,
-        psi_i,
-        det_to_index_j,
-        spindet_a_occ_i,
-        spindet_b_occ_i,
+        idx: Two_electron_integral_index,
+        psi_i: Psi_det,
+        det_to_index_j: Dict[Determinant, int],
+        spindet_a_occ_i: Dict[OrbitalIdx, Set[int]],
+        spindet_b_occ_i: Dict[OrbitalIdx, Set[int]],
         exci,
     ):
         """
-        psi_i psi_j: Psi_det, lists of determinants
-        idx: i,j,k,l, index of integral <ij|kl>
-        For an integral i,j,k,l of category F, yield all dependent determinant pairs (I,J) and associated phase
-        Possibilities are i=j<k=l (1,1,2,2). Contributes to diagonal elements and doubles
+        Return determinant pairs (I, J) connected by integral idx in category F. For use in the Hamiltonian build
+        Category F possibilties:
+            i = j < k = l: e.g., (1, 1, 2, 2)
+        This category contributes to diagonals (same-spin) and double (opposite-spin) excitation pairs
+
+        Inputs:
+        :param idx:                              (i, j, k, l) index of two-electron integral
+        :param psi_i:                            List of internal determinants (wave function)
+        :param det_to_index_j:                   Hash map of determinants -> Associated indices in psi_j
+        :param spindet_a_occ_i, spindet_b_occ_i: Dictionaries mapping |OrbitalIdx| -> Indices of determinants occupied in associated orbital
+
+        Outputs:
+        For two-electron integral (i, j, k, l) in category F, return determinant pairs (I, J) \in (psi_i, psi_j) and associated phase
         """
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "F"
 
         def do_diagonal_F(i, k, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i):
-            # should have negative phase, since <11|22> = <12|21> -> <12|12> with negative factor
+            # Should have negative phase, since <11|22> = <12|21> -> <12|12> with negative factor
             # Get indices of determinants occupied in ia, ja and jb, jb
             det_indices = chain(
                 Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
@@ -2233,22 +2334,24 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         idx: Two_electron_integral_index,
         psi: Psi_det,
         C: Spin_determinant,
-        spindet_a_occ,
-        spindet_b_occ,
+        spindet_a_occ: Dict[OrbitalIdx, Set[int]],
+        spindet_b_occ: Dict[OrbitalIdx, Set[int]],
         exci,
     ):
         """
-        Return determinant pairs (I, J) connected by integral idx in category E, s.to J \in constraint for use in PT2 selection
-        Category E possibilties:
+        Return determinant pairs (I, J) connected by integral idx in category F, s.to J \in constraint for use in PT2 selection
+        Category F possibilties:
             i = j < k = l: e.g., (1, 1, 2, 2)
-        This category contributes to diagonals (not relevant for pt2) and double (opposite-spin) excitation pairs
+        This category contributes to diagonals (not relevant for PT2) and double (opposite-spin) excitation pairs
 
         Inputs:
-        :param psi: List of internal determinants
-        :param idx: (i, j, k, l) index of two-electron integral
+        :param idx:                          (i, j, k, l) index of two-electron integral
+        :param psi:                          List of internal determinants (wave function)
+        :param C:                            Constraint as |Spin_determinant|, three `highest` occupied alpha spin orbitals
+        :param spindet_a_occ, spindet_b_occ: Dictionaries mapping |OrbitalIdx| -> Indices of determinants occupied in associated orbital
 
         Outputs:
-        For two-electron integral (i, j, k, l) in category E, return determinant pairs (I, J) \in (psi, psi_connected) and associated phase
+        For two-electron integral (i, j, k, l) in category F, return determinant pairs (I, J) \in (psi, psi_connected) and associated phase s.to J satisfies C
         """
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "F"
@@ -2271,12 +2374,30 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         )
 
     @staticmethod
-    def category_G(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, exci):
+    def category_G(
+        idx: Two_electron_integral_index,
+        psi_i: Psi_det,
+        det_to_index_j: Dict[Determinant, int],
+        spindet_a_occ_i: Dict[OrbitalIdx, Set[int]],
+        spindet_b_occ_i: Dict[OrbitalIdx, Set[int]],
+        exci,
+    ):
         """
-        psi_i psi_j: Psi_det, lists of determinants
-        idx: i,j,k,l, index of integral <ij|kl>
-        For an integral i,j,k,l of category G, yield all dependent determinant pairs (I,J) and associated phase
-        Possibilities are i<j<k<l (1,2,3,4), i<k<j<l (1,3,2,4), j<i<k<l (2,1,3,4)
+        Return determinant pairs (I, J) connected by integral idx in category G. For use in the Hamiltonian build
+        Category G possibilties:
+            i < j < k < l: e.g., (1, 2, 3, 4)
+            i < k < j < l: e.g., (1, 3, 2, 4)
+            j < i < k < l: e.g., (2, 1, 3, 4)
+        This category contributes to opposite-spin and same-spin double excitations
+
+        Inputs:
+        :param idx:                              (i, j, k, l) index of two-electron integral
+        :param psi_i:                            List of internal determinants (wave function)
+        :param det_to_index_j:                   Hash map of determinants -> Associated indices in psi_j
+        :param spindet_a_occ_i, spindet_b_occ_i: Dictionaries mapping |OrbitalIdx| -> Indices of determinants occupied in associated orbital
+
+        Outputs:
+        For two-electron integral (i, j, k, l) in category G, return determinant pairs (I, J) \in (psi_i, psi_j) and associated phase
         """
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "G"
@@ -2303,24 +2424,26 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         idx: Two_electron_integral_index,
         psi: Psi_det,
         C: Spin_determinant,
-        spindet_a_occ,
-        spindet_b_occ,
+        spindet_a_occ: Dict[OrbitalIdx, Set[int]],
+        spindet_b_occ: Dict[OrbitalIdx, Set[int]],
         exci,
     ):
         """
         Return determinant pairs (I, J) connected by integral idx in category G, s.to J \in constraint for use in PT2 selection
-        Category E possibilties:
+        Category G possibilties:
             i < j < k < l: e.g., (1, 2, 3, 4)
             i < k < j < l: e.g., (1, 3, 2, 4)
             j < i < k < l: e.g., (2, 1, 3, 4)
         This category contributes to opposite-spin and same-spin double excitations
 
         Inputs:
-        :param psi: List of internal determinants
-        :param idx: (i, j, k, l) index of two-electron integral
+        :param idx:                          (i, j, k, l) index of two-electron integral
+        :param psi:                          List of internal determinants (wave function)
+        :param C:                            Constraint as |Spin_determinant|, three `highest` occupied alpha spin orbitals
+        :param spindet_a_occ, spindet_b_occ: Dictionaries mapping |OrbitalIdx| -> Indices of determinants occupied in associated orbital
 
         Outputs:
-        For two-electron integral (i, j, k, l) in category G, return determinant pairs (I, J) \in (psi, psi_connected) and associated phase
+        For two-electron integral (i, j, k, l) in category G, return determinant pairs (I, J) \in (psi_i, psi_j) and associated phase s.to J satisfies C
         """
 
         i, j, k, l = idx
@@ -2343,12 +2466,14 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 hp1, hp2, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci
             )
 
-    def H_indices(self, psi_i, psi_j) -> Iterator[Two_electron_integral_index_phase]:
+    def H_indices(
+        self, psi_i: Psi_det, psi_j: Psi_det
+    ) -> Iterator[Two_electron_integral_index_phase]:
         # Returns H_indices, and idx of associated integral
         generator = H_indices_generator(psi_i, psi_j)
         spindet_a_occ_i, spindet_b_occ_i = generator.spindet_occ_int
         det_to_index_j = generator.det_to_index
-        for idx4, integral_values in self.d_two_e_integral.items():
+        for idx4, _ in self.d_two_e_integral.items():
             idx = compound_idx4_reverse(idx4)
             for (
                 (a, b),
@@ -2357,7 +2482,12 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 yield (a, b), idx, phase
 
     def H_indices_idx(
-        self, idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i
+        self,
+        idx: Two_electron_integral_index,
+        psi_i: Psi_det,
+        det_to_index_j: Dict[OrbitalIdx, int],
+        spindet_a_occ_i: Dict[OrbitalIdx, Set[int]],
+        spindet_b_occ_i: Dict[OrbitalIdx, Set[int]],
     ) -> Iterator[Two_electron_integral_index_phase]:
         # Call to get indices of determinant pairs + associated phase for a given integral idx
         category = integral_category(*idx)
@@ -3229,6 +3359,7 @@ class Powerplant_manager(object):
         nominator_conts = np.array(list(E_pt2_J), dtype="float")
         E_var = self.E(psi_coef)  # Pre-compute variational energy
         # Will have to return anyway
+        # TODO: For integral driven, loop over integrals? In general, be more efficient in this area.
         psi_connected_C = [det_J for det_J in nominator_conts_table.keys()]
         denominator_conts = np.divide(
             1.0,
