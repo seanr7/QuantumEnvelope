@@ -269,7 +269,6 @@ class Excitation:
         """
         return sum(Excitation.exc_degree(det_i, det_j)) in [1, 2]
 
-    # TODO: Function that does load balancing and generation of `local` constraints...
     def generate_all_constraints(self, n_elec, m=3) -> List[Spin_determinant]:
         """Generate all `m'-constraints, characterized by m most highly occupied (usually alpha) electrons
         >>> Excitation(4).generate_all_constraints(3)
@@ -3258,12 +3257,12 @@ class Powerplant_manager(object):
 
         yield from Excitation(self.N_orb).get_chunk_of_connected_determinants(self.psi_internal, L)
 
+    @cached_property
     def gen_local_constraints(self) -> Iterator[Spin_determinant]:
         # Generate local constraints
-        # TODO: For now, this returns all constraints. In future, will be a call to MPI function that yields local ones
-        for C in Excitation(self.N_orb).generate_all_constraints(
-            len(getattr(self.psi_internal[0], "alpha"))
-        ):
+        # Call to MPI function that yields local constraints
+        C_loc, _ = Excitation(self.N_orb).dispatch_local_constraints(self.psi_internal)
+        for C in C_loc:
             yield C
 
     def psi_external_pt2(self, C: Spin_determinant, psi_coef: Psi_coef) -> List[Energy]:
@@ -3388,7 +3387,7 @@ class Powerplant_manager(object):
         # Pre-allocate space for the reduced E_pt2 contributions
         E_pt2_conts = np.zeros(1, dtype="float")
         # Generate chunks of the connected space by constraints
-        for C in self.gen_local_constraints():
+        for C in self.gen_local_constraints:
             # Track E_pt2 contributions of determinants in the current chunk of the connected space
             _, E_pt2_conts_local = self.psi_external_pt2(C, psi_coef)
             E_pt2_conts += sum(E_pt2_conts_local)
@@ -3423,6 +3422,7 @@ def selection_step(
     # See example of chained call to this function in `test_f2_631g_1p5p5det`
 
     # Instance of Powerplant manager class for computing E_pt2 energies
+    print("Create PP man")
     PP_manager = Powerplant_manager(comm, lewis)
 
     # Each rank generates a chunk of the external space at the time -> computes the E_pt2 contributions of its respective chunk
@@ -3430,10 +3430,12 @@ def selection_step(
 
     # 1.
     # Compute the local best E_pt2 contributions + associated dets
+    print("Computing local best")
     local_best_dets, local_best_energies = local_sort_pt2_energies(PP_manager, psi_coef, psi_det, n)
 
     # 2.
     # Global sort local contributions to get global best E_pt2 contributions + dets
+    print("Computing global best")
     global_best_dets = global_sort_pt2_energies(comm, local_best_dets, local_best_energies, n)
 
     # 3.
@@ -3451,6 +3453,7 @@ def selection_step(
     )
 
     # Return new E_var, psi_coef, and extended wavefunction
+    print("New pt2!")
     return (*Powerplant_manager(comm, lewis_new).E_and_psi_coef, psi_det_extented)
 
 
@@ -3465,7 +3468,7 @@ def local_sort_pt2_energies(
     # TODO: Will have to think more carefully about the case when size of the constraint space is < n
     local_best_dets = [Determinant(alpha=(), beta=())] * n  # `Dummy' determinants
     # TODO: This can be now done by constraint? Yes.. I think this outer loop is just changed to `gen_local_constraints'
-    for C in PP_manager.gen_local_constraints():
+    for C in PP_manager.gen_local_constraints:
         # 1.
         # Compute E_pt2 contributions of current chunk of determinants
         # It is assumed that `chunk_size` is enough to fit in memory
@@ -3507,8 +3510,6 @@ def global_sort_pt2_energies(comm, local_best_dets: Psi_det, local_best_energies
         global_idx = np.argpartition(aggregated_energies, n)[:n]
 
         # Now, save global best E_pt2 contributors
-        # TODO: I guess this guy below is not getting use?
-        global_best_energies = np.array(aggregated_energies[global_idx])
         global_best_dets = [aggregated_dets[i] for i in global_idx]
     else:
         global_best_dets = local_best_dets
