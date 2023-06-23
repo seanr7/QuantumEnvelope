@@ -3387,13 +3387,20 @@ class Powerplant_manager(object):
         # Generate chunks of the connected space by constraints
         for C in self.gen_local_constraints():
             # Track E_pt2 contributions of determinants in the current chunk of the connected space
+            print(f"Rank: {self.comm.Get_rank()} Constraint: {C}")
             _, E_pt2_conts_local = self.psi_external_pt2(C, psi_coef)
             E_pt2_conts += sum(E_pt2_conts_local)
+            print(f"Rank: {self.comm.Get_rank()} Tracking E_pt2_conts: {E_pt2_conts}")
+
 
         # Sum in place -> MPI.Allreduce call
         # Equivalent to MPI AllGather + sum. Do this because we can't store the full external space
         E_pt2 = np.zeros(1, dtype="float")  # Pre-allocate recvbuf for final E_pt2 value
-        self.comm.Allreduce([E_pt2_conts, MPI.DOUBLE], [E_pt2, MPI.DOUBLE])
+        print(f"Rank: {self.comm.Get_rank()} E_pt2 before: {E_pt2}")
+        print(f"Rank: {self.comm.Get_rank()} E_pt2_conts before: {E_pt2_conts}")
+        self.comm.Allreduce([E_pt2_conts, MPI.DOUBLE], [E_pt2, MPI.DOUBLE], op = MPI.SUM)
+        print(f"Rank: {self.comm.Get_rank()} E_pt2 after: {E_pt2}")
+        print(f"Rank: {self.comm.Get_rank()} E_pt2_conts after: {E_pt2_conts}")
         return E_pt2.item()
 
 
