@@ -543,7 +543,9 @@ class Excitation:
         return spindet[-3:]
 
     # TODO: Next, optimization of this + testing (Should do some caching during tests this is super slow to generate again and again...)
-    def dispatch_local_constraints(self, psi: Psi_det) -> List[Spin_determinant]:
+    def dispatch_local_constraints(
+        self, comm: MPI.COMM_WORLD, psi: Psi_det
+    ) -> List[Spin_determinant]:
         """MPI function, perform static load balancing + distribution of triplet-constraints to MPI ranks
         Work is roughly distributed based on the number of connected determinants satisfying a particular constraint
         Inputs:
@@ -552,9 +554,9 @@ class Excitation:
         Outputs:
         :param C_loc: Local constraints"""
 
-        rank = MPI.COMM_WORLD.Get_rank()
+        rank = comm.Get_rank()
         # Initialize array to track workload of each rank
-        W = np.zeros(shape=(MPI.COMM_WORLD.Get_size(),), dtype="i")
+        W = np.zeros(shape=(comm.Get_size(),), dtype="i")
         C_loc = []  # Pre-allocate space for local constraints
         na = len(getattr(psi[0], "alpha"))  # No. of alpha electrons
         nb = len(getattr(psi[0], "beta"))  # No. of beta electrons
@@ -633,7 +635,7 @@ class Excitation:
                 h += np.dot(n_particles, n_holes)  # Add to work thus far
 
             if h > 0:  # Handle case where no dets satisfy C.. No one will do it
-                _, loc = MPI.COMM_WORLD.allreduce(
+                _, loc = comm.allreduce(
                     (W[rank], rank), MPI.MINLOC
                 )  # This is a tuple, so use python command
                 if loc == rank:  # Rank with lowest amount of work collects current constraint
@@ -3259,11 +3261,13 @@ class Powerplant_manager(object):
     def gen_local_constraints(self) -> Iterator[Spin_determinant]:
         # Generate local constraints
         # Call to MPI function that yields local constraints
-        C_loc, _ = Excitation(self.N_orb).dispatch_local_constraints(self.psi_internal)
+        C_loc, _ = Excitation(self.N_orb).dispatch_local_constraints(self.comm, self.psi_internal)
         for C in C_loc:
             yield C
 
-    def psi_external_pt2(self, C: Spin_determinant, psi_coef: Psi_coef) -> List[Energy]:
+    def psi_external_pt2(
+        self, C: Spin_determinant, psi_coef: Psi_coef, E_var: Energy
+    ) -> List[Energy]:
         """
         Compute the E_pt2 contributions of a subset of the connected space determined by given constraiant C
         The individual pt2 contribution of each connected det |J⟩ is given by
@@ -3354,7 +3358,7 @@ class Powerplant_manager(object):
 
         E_pt2_J = nominator_conts_table.values()
         nominator_conts = np.array(list(E_pt2_J), dtype="float")
-        E_var = self.E(psi_coef)  # Pre-compute variational energy
+        # E_var = self.E(psi_coef)  # Pre-compute variational energy
         # Will have to return anyway
         # TODO: For integral driven, loop over integrals? In general, be more efficient in this area.
         psi_connected_C = [det_J for det_J in nominator_conts_table.keys()]
@@ -3383,25 +3387,20 @@ class Powerplant_manager(object):
         """
 
         # Pre-allocate space for the reduced E_pt2 contributions
-        E_pt2_conts = np.zeros(1, dtype="float")
+        E_var = self.E(psi_coef)  # Pre-compute variational energy
+        E_pt2_conts = np.zeros(1, dtype="double")
         # Generate chunks of the connected space by constraints
         for C in self.gen_local_constraints():
             # Track E_pt2 contributions of determinants in the current chunk of the connected space
-            print(f"Rank: {self.comm.Get_rank()} Constraint: {C}")
-            _, E_pt2_conts_local = self.psi_external_pt2(C, psi_coef)
+            _, E_pt2_conts_local = self.psi_external_pt2(C, psi_coef, E_var)
             E_pt2_conts += sum(E_pt2_conts_local)
-            print(f"Rank: {self.comm.Get_rank()} Tracking E_pt2_conts: {E_pt2_conts}")
-
 
         # Sum in place -> MPI.Allreduce call
         # Equivalent to MPI AllGather + sum. Do this because we can't store the full external space
-        E_pt2 = np.zeros(1, dtype="float")  # Pre-allocate recvbuf for final E_pt2 value
-        print(f"Rank: {self.comm.Get_rank()} E_pt2 before: {E_pt2}")
-        print(f"Rank: {self.comm.Get_rank()} E_pt2_conts before: {E_pt2_conts}")
-        self.comm.Allreduce([E_pt2_conts, MPI.DOUBLE], [E_pt2, MPI.DOUBLE], op = MPI.SUM)
-        print(f"Rank: {self.comm.Get_rank()} E_pt2 after: {E_pt2}")
-        print(f"Rank: {self.comm.Get_rank()} E_pt2_conts after: {E_pt2_conts}")
-        return E_pt2.item()
+        _E_pt2 = np.zeros(1, dtype="double")  # Pre-allocate recvbuf for final E_pt2 value
+        self.comm.Allreduce([E_pt2_conts, MPI.DOUBLE], [_E_pt2, MPI.DOUBLE])
+
+        return _E_pt2.item()
 
 
 #  __
@@ -3465,6 +3464,7 @@ def local_sort_pt2_energies(
     # Each rank computes the best contributions from a (disjoint) subset of the connected space, determined by constraint
 
     # Pre-allocate space to track bests from previous chunk
+    E_var = PP_manager.E(psi_coef)
     local_best_energies = np.ones(n, dtype="float")
     # TODO: Will have to think more carefully about the case when size of the constraint space is < n
     local_best_dets = [Determinant(alpha=(), beta=())] * n  # `Dummy' determinants
@@ -3472,7 +3472,7 @@ def local_sort_pt2_energies(
         # 1.
         # Compute E_pt2 contributions of current chunk of determinants
         # It is assumed that `chunk_size` is enough to fit in memory
-        psi_connected_C, E_pt2_energies_C = PP_manager.psi_external_pt2(C, psi_coef)
+        psi_connected_C, E_pt2_energies_C = PP_manager.psi_external_pt2(C, psi_coef, E_var)
 
         # 2.
         # Aggregate current E_pt2 contributions and current n `best' contributions to partial sort
