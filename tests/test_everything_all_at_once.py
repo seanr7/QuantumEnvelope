@@ -889,7 +889,7 @@ class Test_VariationalPT2Powerplant:
         self.assertAlmostEqual(E_ref, E, places=6)
 
 
-def load_and_compute_pt2(fcidump_path, wf_path, driven_by, chunk_size=None):
+def load_and_compute_pt2(fcidump_path, wf_path, driven_by):
     # Load integrals
     n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
     # Load wave function
@@ -901,13 +901,13 @@ def load_and_compute_pt2(fcidump_path, wf_path, driven_by, chunk_size=None):
 
 
 class Test_VariationalPT2_Determinant(Timing, unittest.TestCase, Test_VariationalPT2Powerplant):
-    def load_and_compute_pt2(self, fcidump_path, wf_path, chunk_size=None):
-        return load_and_compute_pt2(fcidump_path, wf_path, "determinant", chunk_size)
+    def load_and_compute_pt2(self, fcidump_path, wf_path):
+        return load_and_compute_pt2(fcidump_path, wf_path, "determinant")
 
 
 class Test_VariationalPT2_Integral(Timing, unittest.TestCase, Test_VariationalPT2Powerplant):
-    def load_and_compute_pt2(self, fcidump_path, wf_path, chunk_size=None):
-        return load_and_compute_pt2(fcidump_path, wf_path, "integral", chunk_size)
+    def load_and_compute_pt2(self, fcidump_path, wf_path):
+        return load_and_compute_pt2(fcidump_path, wf_path, "integral")
 
 
 class Test_Selection(Timing, unittest.TestCase):

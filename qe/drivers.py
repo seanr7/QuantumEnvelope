@@ -552,10 +552,9 @@ class Excitation:
         Outputs:
         :param C_loc: Local constraints"""
 
-        comm = MPI.COMM_WORLD
-        rank = comm.Get_rank()
+        rank = MPI.COMM_WORLD.Get_rank()
         # Initialize array to track workload of each rank
-        W = np.zeros(shape=(comm.Get_size(),), dtype="i")
+        W = np.zeros(shape=(MPI.COMM_WORLD.Get_size(),), dtype="i")
         C_loc = []  # Pre-allocate space for local constraints
         na = len(getattr(psi[0], "alpha"))  # No. of alpha electrons
         nb = len(getattr(psi[0], "beta"))  # No. of beta electrons
@@ -634,7 +633,7 @@ class Excitation:
                 h += np.dot(n_particles, n_holes)  # Add to work thus far
 
             if h > 0:  # Handle case where no dets satisfy C.. No one will do it
-                _, loc = comm.allreduce(
+                _, loc = MPI.COMM_WORLD.allreduce(
                     (W[rank], rank), MPI.MINLOC
                 )  # This is a tuple, so use python command
                 if loc == rank:  # Rank with lowest amount of work collects current constraint
@@ -3257,7 +3256,6 @@ class Powerplant_manager(object):
 
         yield from Excitation(self.N_orb).get_chunk_of_connected_determinants(self.psi_internal, L)
 
-    @cached_property
     def gen_local_constraints(self) -> Iterator[Spin_determinant]:
         # Generate local constraints
         # Call to MPI function that yields local constraints
@@ -3387,7 +3385,7 @@ class Powerplant_manager(object):
         # Pre-allocate space for the reduced E_pt2 contributions
         E_pt2_conts = np.zeros(1, dtype="float")
         # Generate chunks of the connected space by constraints
-        for C in self.gen_local_constraints:
+        for C in self.gen_local_constraints():
             # Track E_pt2 contributions of determinants in the current chunk of the connected space
             _, E_pt2_conts_local = self.psi_external_pt2(C, psi_coef)
             E_pt2_conts += sum(E_pt2_conts_local)
@@ -3463,8 +3461,7 @@ def local_sort_pt2_energies(
     local_best_energies = np.ones(n, dtype="float")
     # TODO: Will have to think more carefully about the case when size of the constraint space is < n
     local_best_dets = [Determinant(alpha=(), beta=())] * n  # `Dummy' determinants
-    # TODO: This can be now done by constraint? Yes.. I think this outer loop is just changed to `gen_local_constraints'
-    for C in PP_manager.gen_local_constraints:
+    for C in PP_manager.gen_local_constraints():
         # 1.
         # Compute E_pt2 contributions of current chunk of determinants
         # It is assumed that `chunk_size` is enough to fit in memory
