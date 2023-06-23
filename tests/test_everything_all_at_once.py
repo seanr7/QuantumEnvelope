@@ -278,6 +278,7 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
     @property
     def psi_and_integral_PT2(self):
         # minimal psi_and_integral, psi_i != psi_j
+        # Na = 3, Nb = 3, Norb = 6 to account for triplet constraints
         psi_i = [Determinant((0, 1, 2), (0, 1, 2)), Determinant((1, 2, 3), (1, 2, 3))]
         psi_j = []
         for i, det in enumerate(psi_i):
