@@ -332,20 +332,17 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
 
 
 class Test_Constrained_Excitation(Timing, unittest.TestCase):
-    @cached_property
-    def f2_631g_1det_wf_norb(self):
-        fcidump_path = "f2_631g.FCIDUMP"
-        n_orb, _, _, _ = load_integrals(f"data/{fcidump_path}")
-        wf_path = "f2_631g.161det.wf"
-        wf_path = "f2_631g.1det.wf"
-        _, psi = load_wf(f"data/{wf_path}")
-        return n_orb, psi
+    @property
+    def psi_and_norb_2det(self):
+        # Do 5 e, 10 orb
+        return 10, [
+            Determinant((0, 1, 2, 3, 4), (0, 1, 2, 3, 4)),
+            Determinant((1, 2, 3, 4, 5), (1, 2, 3, 4, 5)),
+        ]
 
     @cached_property
-    def f2_631g_1det_connected(self):
-        # Generate connected space of f2 1det wf once then cache
-        n_orb, psi = self.f2_631g_1det_wf_norb
-        # Naive algorithm 13
+    def psi_connected_2det(self):
+        n_orb, psi = self.psi_and_norb_2det
         l_global = []
         for i, det in enumerate(psi):
             for det_connected in Excitation(n_orb).gen_all_connected_det_from_det(det):
@@ -362,26 +359,26 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
         return l_global
 
     @cached_property
-    def f2_631g_1det_connected_from_det(self):
+    def connected_by_det(self):
         # For each det in WF, generate all singles and doubles and store with generator
         # Will sort out by constraint later
-        n_orb, psi = self.f2_631g_1det_wf_norb
+        n_orb, psi = self.psi_and_norb_2det
         # Initialize empty dict with generators as keys
         d = defaultdict(list, {det_I: [] for det_I in psi})
         for det_I in psi:
             # Generate all singles and doubles of det_I
             det_I_sd = [det_J for det_J in Excitation(n_orb).gen_all_connected_det_from_det(det_I)]
             for det_J in det_I_sd:
-                if sum(Excitation(n_orb).exc_degree(det_I, det_J)) == 2:
+                if det_J not in psi:
                     d[det_I].append(det_J)
 
         return d
 
     @cached_property
-    def f2_631g_1det_connected_by_constraint(self):
+    def connected_by_constraint(self):
         # Bin each connected determinant by constraint
         # Initialize defaultdict with keys as all possible constraints (accounts for case when no determinant satisfies a constraint)
-        n_orb, psi = self.f2_631g_1det_wf_norb
+        n_orb, psi = self.psi_and_norb_2det
         d = defaultdict(
             list,
             {
@@ -389,7 +386,7 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
                 for con in self.generate_all_constraints(len(getattr(psi[0], "alpha")), n_orb)
             },
         )
-        for det in self.f2_631g_1det_connected:
+        for det in self.psi_connected_2det:
             # What triplet constraint does this det satisfy?
             con = self.check_constraint(det, "alpha")
             d[con].append(det)
@@ -405,32 +402,42 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
         # Just a call to Excitation class to make things easier
         return Excitation(n_orb).generate_all_constraints(n_a, 3)
 
-    def test_f2_631g_1det_constrained_excitations(self, spin="alpha"):
+    def test_constrained_excitations(self, spin="alpha"):
         # 1. For each constraint, pass through wf
-        n_orb, psi = self.f2_631g_1det_wf_norb
+        n_orb, psi = self.psi_and_norb_2det
         for C in self.generate_all_constraints(len(getattr(psi[0], spin)), n_orb):
             # Initialiaze default dict with keys as dets in wf, store all constrained singles + doubles with generator
             sd_by_C = defaultdict(list, {det_I: [] for det_I in psi})
             for det_I in psi:
-                # For this det_I, generate all singles + doubles subject to constraint
+                # For this det_I, generate all singles + doubles subject to current constraint
                 sd_by_C[det_I].extend(
                     [
                         det_J
                         for det_J in Excitation(
                             n_orb
                         ).triplet_constrained_double_excitations_from_det(det_I, C, spin)
+                        if det_J not in psi
                     ]
                 )
-                # For this constraint, get determinants from reference connected space that satisfy C
-                # This is for ONE determinant.. So there should be no duplicates in the dict per generator key
-                for gen_det_I, det_I_conn_by_C in sd_by_C.items():
-                    # This list contains all determinants connected to det_I
-                    ref_det_I_conn = list(self.f2_631g_1det_connected_from_det[gen_det_I])
-                    # Filter out those that satisfy constraint C
-                    ref_det_I_conn_by_C = [
-                        det_J for det_J in ref_det_I_conn if (self.check_constraint(det_J) == C)
+                sd_by_C[det_I].extend(
+                    [
+                        det_J
+                        for det_J in Excitation(
+                            n_orb
+                        ).triplet_constrained_single_excitations_from_det(det_I, C, spin)
+                        if det_J not in psi
                     ]
-                    self.assertListEqual(sorted(ref_det_I_conn_by_C), sorted(det_I_conn_by_C))
+                )
+            # For this constraint, get determinants from reference connected space that satisfy C
+            # This is for ONE determinant.. So there should be no duplicates in the dict per generator key
+            for gen_det_I, det_I_conn_by_C in sd_by_C.items():
+                # This list contains all determinants connected to det_I
+                ref_det_I_conn = list(self.connected_by_det[gen_det_I])
+                # Filter out those that satisfy constraint C
+                ref_det_I_conn_by_C = [
+                    det_J for det_J in ref_det_I_conn if (self.check_constraint(det_J) == C)
+                ]
+                self.assertListEqual(sorted(ref_det_I_conn_by_C), sorted(det_I_conn_by_C))
 
 
 class Test_Integral_Driven_Categories(Test_Minimal):

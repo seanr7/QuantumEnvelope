@@ -542,12 +542,12 @@ class Excitation:
         # Return constraint as |Spin_determinant|
         return spindet[-3:]
 
-    # TODO: Next, optimization of this + testing (Should do some caching during tests this is super slow to generate again and again...)
     def dispatch_local_constraints(
         self, comm: MPI.COMM_WORLD, psi: Psi_det
     ) -> List[Spin_determinant]:
         """MPI function, perform static load balancing + distribution of triplet-constraints to MPI ranks
         Work is roughly distributed based on the number of connected determinants satisfying a particular constraint
+
         Inputs:
         :param psi: List of internal determinants (global)
 
@@ -561,11 +561,7 @@ class Excitation:
         na = len(getattr(psi[0], "alpha"))  # No. of alpha electrons
         nb = len(getattr(psi[0], "beta"))  # No. of beta electrons
         # Pass through all triplet constraints to distribute
-        H = []  # Track work dist
-        # H = defaultdict(
-        #     int,
-        #     {con: [] for con in self.generate_all_constraints(na, self.n_orb)},
-        # )  # Track work dist TODO: Dict is too slow..
+        H = []  # Track work dist.
         for C in self.generate_all_constraints(na):
             B_upper = set(range(min(C) + 1, self.n_orb))  # Upper bitmask
             B_lower = set(range(min(C)))  # Lower bitmask
@@ -3358,8 +3354,6 @@ class Powerplant_manager(object):
 
         E_pt2_J = nominator_conts_table.values()
         nominator_conts = np.array(list(E_pt2_J), dtype="float")
-        # E_var = self.E(psi_coef)  # Pre-compute variational energy
-        # Will have to return anyway
         # TODO: For integral driven, loop over integrals? In general, be more efficient in this area.
         psi_connected_C = [det_J for det_J in nominator_conts_table.keys()]
         denominator_conts = np.divide(
