@@ -219,7 +219,6 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
             sdet_i: Tuple[OrbitalIdx, ...],
             sdet_j: Tuple[OrbitalIdx, ...],
             sdet_k: Tuple[OrbitalIdx, ...],
-
             spin: str,
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly one orbital"""
@@ -232,7 +231,6 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
                 yield (h, i, p, i), phase
 
         def H_ij_doubleAA_indices(
-
             sdet_j: Tuple[OrbitalIdx, ...], spin
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly two orbitals within
