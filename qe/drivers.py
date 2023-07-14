@@ -219,10 +219,12 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
             sdet_i: Tuple[OrbitalIdx, ...],
             sdet_j: Tuple[OrbitalIdx, ...],
             sdet_k: Tuple[OrbitalIdx, ...],
+
             spin: str,
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly one orbital"""
             phase, h, p = det_i.single_exc(sdet_j, spin)
+
             for i in sdet_i:
                 yield (h, i, p, i), phase
                 yield (h, i, i, p), -phase
@@ -230,11 +232,13 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
                 yield (h, i, p, i), phase
 
         def H_ij_doubleAA_indices(
+
             sdet_j: Tuple[OrbitalIdx, ...], spin
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly two orbitals within
             the same spin."""
             phase, h1, h2, p1, p2 = det_i.double_exc(sdet_j, spin)
+
             yield (h1, h2, p1, p2), phase
             yield (h1, h2, p2, p1), -phase
 
@@ -243,8 +247,10 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
             one beta spin-orbital."""
+
             phaseA, h1, p1 = det_i.single_exc(det_j.alpha, "alpha")
             phaseB, h2, p2 = det_i.single_exc(det_j.beta, "beta")
+
             yield (h1, h2, p1, p2), phaseA * phaseB
 
         ed_up, ed_dn = det_i.exc_degree(det_j)
@@ -392,7 +398,9 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             #   Compute phase of (single) excitation pair and yield (I, J), phase
             if excited_det in det_to_index:
                 # :param `phasemod` is \pm 1, sign of two-electron integral in definition of SC-rules
+
                 phase = phasemod * det.single_phase(h, p, spin)
+
                 yield (I, det_to_index[excited_det]), phase
             else:
                 pass
@@ -425,7 +433,9 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             # Assert the excited determinant satisfies the appropriate constraint C
             assert check_constraint(excited_det) == C
             # param `phasemod` is \pm 1, sign of two-electron integral in definition of SC-rules
+
             phase = phasemod * det.single_phase(h, p, spin)
+
             # excited_det is in the connected space by default; yield (I, det_J) phase
             # Cannot yield index of excited_det since this requires storing (knowing) connected space a priori
             yield (I, excited_det), phase
@@ -467,6 +477,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                     phase = -phase
                 if p2 < p1:
                     phase = -phase
+
                 yield (I, det_to_index[excited_det]), phase
             else:
                 pass
@@ -2830,8 +2841,9 @@ def local_sort_pt2_energies(
         else:
             # TODO: Maybe a bit hacky, but working fix for now... Argpartition throws error if no dets are generated in this constraint
             working_energies = np.r_[1, local_best_energies]
-            # Add dummy
-            working_dets = local_best_dets + [Determinant(alpha=(), beta=())]
+            working_dets = local_best_dets
+        if not (working_dets):
+            working_dets = [Determinant(alpha=(), beta=())]
         # Update `local' n largest magnitude E_pt2 contributions from working chunk -> indices of top n determinants
         # E_pt2 < 0, so n `smallest' are actually the largest magnitude contributors
         local_idx = np.argpartition(working_energies, n)[:n]
