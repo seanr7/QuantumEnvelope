@@ -1,6 +1,8 @@
 from typing import Tuple, Dict, NamedTuple, List, NewType, Iterator
 from itertools import chain, product, combinations, takewhile
 from functools import partial, cache
+from collections import defaultdict
+import ctypes
 
 # Orbital index (0,1,2,...,n_orb-1)
 OrbitalIdx = NewType("OrbitalIdx", int)
@@ -391,6 +393,8 @@ class Determinant(tuple):
     __slots__ = ()
 
     _fields = ("alpha", "beta")
+
+    # TODO: Add extra param for spin_det type
 
     def __new__(_cls, *args, **kwargs):
         """Create new |Determinant| instance
@@ -915,6 +919,28 @@ class Determinant(tuple):
     # Driver functions for computing phase, hole and particle between determinant pairs
     # TODO: These are ONLY implemented for |Spin_determinant_tuple| at the moment;
     # So, might just keep as is
+
+    def get_holes_particles_in_exc(
+        self, det_j
+    ) -> Tuple[Dict[str, OrbitalIdx], Dict[str, OrbitalIdx]]:
+        """Return holes, particles involved in an excitation between self and det of type |Determinant|
+        Assume excitation is from self -> det_j
+        >>> Determinant((0, 1), (0, 1)).get_holes_particles_in_exc(Determinant((2, 3), (0, 4)))
+        (defaultdict(<class 'set'>, {'alpha': {0, 1}, 'beta': {1}}),
+         defaultdict(<class 'set'>, {'alpha': {2, 3}, 'beta': {4}}))
+        """
+
+        d_holes, d_parts = defaultdict(set), defaultdict(set)
+        for spin in ("alpha", "beta"):
+            sdet_i, sdet_j = getattr(self, spin), getattr(det_j, spin)
+            holes = (sdet_i ^ sdet_j) & sdet_i
+            parts = (sdet_i ^ sdet_j) & sdet_j
+            for h in holes:
+                d_holes[spin].add(h)
+            for p in parts:
+                d_parts[spin].add(p)
+
+        return (d_holes, d_parts)
 
     def single_phase(
         self,
