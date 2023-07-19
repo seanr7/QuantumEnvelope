@@ -523,8 +523,10 @@ class Spin_determinant_bitstring(int):
 
 
 class ExcDegreeResult(ctypes.Structure):
-    _fields_ = [("ed_up", ctypes.c_int), ("ed_dn", ctypes.c_int)]
-
+    _fields_ = [
+        ("ed_up", ctypes.c_int),
+        ("ed_dn", ctypes.c_int)
+    ]
 
 #   ______     _                      _                   _
 #   |  _  \   | |                    (_)                 | |
