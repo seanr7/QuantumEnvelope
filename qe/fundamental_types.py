@@ -524,15 +524,15 @@ class Determinant(tuple):
     _fields = ("alpha", "beta")
 
     # Rename function
-    exc_degree = cpp_lib.exc_degree
+    exc_dg = cpp_lib.exc_degree
     # Define argument types and return types
-    exc_degree.argtypes = (
+    exc_dg.argtypes = (
         ctypes.c_uint64,
         ctypes.c_uint64,
         ctypes.c_uint64,
         ctypes.c_uint64,
     )
-    exc_degree.restype = ExcDegreeResult
+    exc_dg.restype = ExcDegreeResult
 
     # TODO: Add extra param for spin_det type
 
@@ -695,7 +695,7 @@ class Determinant(tuple):
             ed_dn = (self.beta ^ det_J.beta).popcnt() // 2
             return ed_up, ed_dn
         else:
-            result = Determinant.exc_degree(self.alpha, self.beta, det_J.alpha, det_J.beta)
+            result = Determinant.exc_dg(self.alpha, self.beta, det_J.alpha, det_J.beta)
             return result.ed_up, result.ed_dn
 
     def is_connected(self, det_j) -> Tuple[int, int]:
