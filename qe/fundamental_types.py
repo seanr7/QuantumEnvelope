@@ -196,7 +196,7 @@ class Spin_determinant_bitstring(int):
     """
 
     # Load Cpp library with logical operators
-    bitstring_ops_lib = ctypes.CDLL("qe/bitstring_ops.so")
+    bitstring_ops_lib = ctypes.CDLL("qe/bitstring_ops.dylib")
 
     # Define the function signature
     bitstring_ops_lib.bitstring_XOR.argtypes = [ctypes.c_ulonglong, ctypes.c_ulonglong]
