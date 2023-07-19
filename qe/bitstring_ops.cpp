@@ -64,6 +64,23 @@ extern "C"{
     //     return sdet_i ^ sdet_j;
     // }
 
+    struct ExcDegreeResult {
+        int ed_up;
+        int ed_dn;
+    };
+
+    // Helper function to calculate the popcnt (population count) of a 64-bit unsigned integer
+    // int popcnt(uint64_t x) {
+    //     return __builtin_popcountll(x);
+    // }
+
+    // Excitation degree function only for bit strings.
+    ExcDegreeResult exc_degree(uint64_t alpha, uint64_t beta, uint64_t det_J_alpha, uint64_t det_J_beta) {
+        ExcDegreeResult result;
+        result.ed_up = bitstring_popcnt(bitstring_XOR(alpha, det_J_alpha)) / 2;
+        result.ed_dn = bitstring_popcnt(bitstring_XOR(beta, det_J_beta)) / 2;
+        return result;
+    }
 }
 
 // int main() {
