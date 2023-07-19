@@ -30,7 +30,7 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
     Certain logical operations overloaded as set operations
     """
 
-    def occupied_orbitals(self):
+    def occupied_orbitals(self) -> Iterator[OrbitalIdx]:
         """Yield occupied orbital indices in this instance of spin determinant"""
         for i in self:
             yield i
@@ -211,7 +211,7 @@ class Spin_determinant_bitstring(int):
     bitstring_ops_lib.bitstring_popcnt.argtypes = [ctypes.c_ulonglong]
     bitstring_ops_lib.bitstring_popcnt.restype = ctypes.c_ulonglong
 
-    def occupied_orbitals(self):
+    def occupied_orbitals(self) -> Iterator[OrbitalIdx]:
         """Yield occupied orbital indices in this instance of spin determinant"""
         for i, bit in enumerate(bin(self)[::-1][:-2]):
             if bit == "1":
