@@ -4,10 +4,17 @@
 #include <array>
 #include <string>
 #include <bitset>
+#include <stdlib.h>
 
+// In hpp header 
+// extern "C"{
+//     void  bitstring_XOR(const sdet_t sdet_i, const sdet_t sdet_j)
+// }
 extern "C"{
-    // Declare relevant types; int and tuple of ints
+    // Declare relevant types; 64-bit int for bitstring representation of determinants
     typedef uint64_t sdet_t;
+    // Vector of integers for `Tuple' representation
+    typedef std::vector<int> sdet_vec_t;
 
     sdet_t bitstring_XOR(const sdet_t sdet_i, const sdet_t sdet_j){
         return sdet_i ^ sdet_j;
@@ -26,81 +33,135 @@ extern "C"{
         return bs_sdet.count();
     }
 
-    // Q: How to do array? Need to intialize with size (Norb)? No.. Vectors?
-    // typedef std::vector<int> sdet_vec_t;
+    void vec_AND(const int* sdet_i_ptr, const size_t size_i, const int* sdet_j_ptr, const size_t size_j, int* size_res_ptr, int** p){
+        /* Inputs:
+        :param sdet_i_ptr, size_i: pointer to first element of sdet_i (NumPy array in Python) and size of sdet_i
+        :param sdet_j_ptr, size_j: "                         " sdet_j "                                 " sdet_j
+        :param size_ptr          : pointer to address in memory where size of result will be stored
 
-    // TODO: This needs to be passed a pointer
-    // sdet_t to_bitstring(const sdet_vec_t& sdet){
-    //     // Declare bitset 
-    //     std::bitset<64> bitstring;
-    //     // Iterate through vector
-    //     for(const int& orbital_idx : sdet){ /* Note; * gets reference from pointer */
-    //         // Set appropriate bits to true
-    //         bitstring.set(orbital_idx, true);
-    //     }   
-    //     // Return as sdet_t
-    //     return bitstring.to_ullong();
-    // }
+        */
+        
+        // Declare result
+        sdet_vec_t AND_res;
+        // For this function; vectors are assumed to be sorted. This is fine, since our spindets will always be sorted 
+        std::set_intersection(sdet_i_ptr, sdet_i_ptr + size_i, sdet_j_ptr, sdet_j_ptr + size_j, std::back_inserter(AND_res));
+        
+        // How big is my result? Compute size_t, and set the passed size_res_ptr to point to the memory address of size_res
+        int size_res = AND_res.size();
+        // Copy at size_res_ptr, size_ptr
+        *size_res_ptr = size_res; 
+        
+        // Get pointer to the data contained in the result...
+        // malloc allocates size_res * sizeof(int) bytes, and read me the address at (the start of) this contiguous slab of memory
+        int *result_ptr = (int *) malloc(size_res * sizeof(int));
 
-    // // TODO: This needs to return a pointer
-    // sdet_vec_t to_tuple(const sdet_t& sdet){
-    //     // Declare bitset; convert integer spindet to bitset
-    //     std::bitset<64> bitstring(sdet); 
-    //     sdet_vec_t sdet_vec; 
-    //     for (int i = 0; i < bitstring.size(); i++){
-    //         if (bitstring[i] == 1) {
-    //             sdet_vec.push_back(i);
-    //         }
-    //     }
-    //     // Return pointer to vector object
-    //     return sdet_vec;
-    // }
+        for (int i = 0; i < size_res; i++){
+            // result_ptr[i] = &(result_ptr[0] + i * size(*result_ptr[0]))
+            result_ptr[i] = AND_res[i];
+        }
+        // Or, *p = &result_ptr[0] 
+        *p = result_ptr;
+        // Outside the function now... 
+    }
 
+    void vec_XOR(const int* sdet_i_ptr, const size_t size_i, const int* sdet_j_ptr, const size_t size_j, int* size_res_ptr, int** p){
+        /* Inputs:
+        :param sdet_i_ptr, size_i: pointer to first element of sdet_i (NumPy array in Python) and size of sdet_i
+        :param sdet_j_ptr, size_j: "                         " sdet_j "                                 " sdet_j
+        :param size_ptr          : pointer to address in memory where size of result will be stored
 
-    // sdet_t bitstring_XOR_withtup(const sdet_t& sdet_i, sdet_vec_t& sdet_vec_j){
-    //     // Overloaded function; for case when input is a tuple
-    //     // First, create a bitmask
-    //     sdet_t sdet_j = to_bitstring(sdet_vec_j); 
-    //     return sdet_i ^ sdet_j;
-    // }
+        */
+        
+        // Declare result
+        sdet_vec_t XOR_res;
+        // For this function; vectors are assumed to be sorted. This is fine, since our spindets will always be sorted 
+        std::set_symmetric_difference(sdet_i_ptr, sdet_i_ptr + size_i, sdet_j_ptr, sdet_j_ptr + size_j, std::back_inserter(XOR_res));
+        
+        // How big is my result? Compute size_t, and set the passed size_res_ptr to point to the memory address of size_res
+        int size_res = XOR_res.size();
+        // Copy at size_res_ptr, size_ptr
+        *size_res_ptr = size_res; 
+        
+        // Get pointer to the data contained in the result...
+        // malloc allocates size_res * sizeof(int) bytes, and read me the address at (the start of) this contiguous slab of memory
+        int *result_ptr = (int *) malloc(size_res * sizeof(int));
+
+        for (int i = 0; i < size_res; i++){
+            // result_ptr[i] = &(result_ptr[0] + i * size(*result_ptr[0]))
+            result_ptr[i] = XOR_res[i];
+        }
+        // Or, *p = &result_ptr[0] 
+        *p = result_ptr;
+        // Outside the function now... 
+    }
+
+    void vec_OR(const int* sdet_i_ptr, const size_t size_i, const int* sdet_j_ptr, const size_t size_j, int* size_res_ptr, int** p){
+        /* Inputs:
+        :param sdet_i_ptr, size_i: pointer to first element of sdet_i (NumPy array in Python) and size of sdet_i
+        :param sdet_j_ptr, size_j: "                         " sdet_j "                                 " sdet_j
+        :param size_ptr          : pointer to address in memory where size of result will be stored
+
+        */
+        
+        // Declare result
+        sdet_vec_t OR_res;
+        // For this function; vectors are assumed to be sorted. This is fine, since our spindets will always be sorted 
+        std::set_intersection(sdet_i_ptr, sdet_i_ptr + size_i, sdet_j_ptr, sdet_j_ptr + size_j, std::back_inserter(OR_res));
+        
+        // How big is my result? Compute size_t, and set the passed size_res_ptr to point to the memory address of size_res
+        int size_res = OR_res.size();
+        // Copy at size_res_ptr, size_ptr
+        *size_res_ptr = size_res; 
+        
+        // Get pointer to the data contained in the result...
+        // malloc allocates size_res * sizeof(int) bytes, and read me the address at (the start of) this contiguous slab of memory
+        int *result_ptr = (int *) malloc(size_res * sizeof(int));
+
+        for (int i = 0; i < size_res; i++){
+            // result_ptr[i] = &(result_ptr[0] + i * size(*result_ptr[0]))
+            result_ptr[i] = OR_res[i];
+        }
+        // Or, *p = &result_ptr[0] 
+        *p = result_ptr;
+        // Outside the function now... 
+    }
 
     struct ExcDegreeResult {
         int ed_up;
         int ed_dn;
     };
 
-    // Helper function to calculate the popcnt (population count) of a 64-bit unsigned integer
-    // int popcnt(uint64_t x) {
-    //     return __builtin_popcountll(x);
-    // }
-
     // Excitation degree function only for bit strings.
-    ExcDegreeResult exc_degree(uint64_t alpha, uint64_t beta, uint64_t det_J_alpha, uint64_t det_J_beta) {
+    ExcDegreeResult exc_degree_bitstring(sdet_t det_I_alpha, sdet_t det_I_beta, sdet_t det_J_alpha, sdet_t det_J_beta) {
         ExcDegreeResult result;
-        result.ed_up = bitstring_popcnt(bitstring_XOR(alpha, det_J_alpha)) / 2;
-        result.ed_dn = bitstring_popcnt(bitstring_XOR(beta, det_J_beta)) / 2;
+        result.ed_up = bitstring_popcnt(bitstring_XOR(det_I_alpha, det_J_alpha)) / 2;
+        result.ed_dn = bitstring_popcnt(bitstring_XOR(det_I_beta, det_J_beta)) / 2;
         return result;
     }
+
+    // Excitation degree function for vectors.
 }
 
-// int main() {
-    // Do my function work?
-    // sdet_vec_t sdet_vec = {0, 2, 3, 5};
-    // // Want 0b101101;
-    // sdet_t sdet_bs = to_bitstring(sdet_vec);
-    // std::bitset<64>bitstring(sdet_bs);
-    // std::cout << "Bitstring guy " << bitstring << std::endl;
-    // // Other way
-    // sdet_vec_t sdet_back_to_vec = to_tuple(sdet_bs);
-    // for(const int& orbital_idx : sdet_back_to_vec){
-    //     std::cout << "Vector guy " << orbital_idx << std::endl;
-    // }
+// int main(){
 
-    // sdet_t sdet1 = 0b10111;
-    // sdet_t sdet2 = 0b10111;
+//     // Test spin_determinants
+//     sdet_vec_t sdet_i {0, 1, 8};
+//     sdet_vec_t sdet_j {0, 8, 17};
+//     sdet_vec_t AND_res;
 
-    // std::cout << "XOR result " << (sdet1 ^ sdet2) << std::endl;
+//     // Declare pointer to size_t
+//     int size_ptr;
+//     // Pointer1 to Pointer2; Pointer2 is where in memory start of result is stored
+//     int* res_ptr;
+//     // Take their logical intersection
+//     vec_AND(sdet_i.data(), 3, sdet_j.data(), 3, &size_ptr, &res_ptr);
 
-    // return 0;
+//     // Now... Does it work?
+//     std::cout << "Size of result " << size_ptr << std::endl;
 
+//     for (int i = 0; i < size_ptr; i++){
+//         std::cout << "Elements of intersection " << res_ptr[i] << std::endl;
+//     }
+
+//     return 0;
 // }

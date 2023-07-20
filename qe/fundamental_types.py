@@ -33,6 +33,36 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
     Certain logical operations overloaded as set operations
     """
 
+    cpp_lib.vec_AND.argtypes = [
+        np.ctypeslib.ndpointer(dtype=np.intc),
+        ctypes.c_int,
+        np.ctypeslib.ndpointer(dtype=np.intc),
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),
+    ]
+    cpp_lib.vec_AND.restype = None
+
+    cpp_lib.vec_OR.argtypes = [
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),
+    ]
+    cpp_lib.vec_AND.restype = None
+
+    cpp_lib.vec_XOR.argtypes = [
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),
+    ]
+    cpp_lib.vec_AND.restype = None
+
     def occupied_orbitals(self) -> Iterator[OrbitalIdx]:
         """Yield occupied orbital indices in this instance of spin determinant"""
         for i in self:
@@ -63,8 +93,15 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         (0,)
         >>> Spin_determinant_tuple((0, 1)) & Spin_determinant_tuple((2, 3))
         ()
+        >>> Spin_determinant_tuple((0, 2, 3)) & Spin_determinant_tuple((2, 3))
+        (2, 3)
         """
-        return Spin_determinant_tuple(set(self) & set(s_tuple))
+        s1, s2 = np.array(self, dtype=np.intc), np.array(s_tuple, dtype=np.intc)
+        size_s1, size_s2 = len(self), len(s_tuple)
+        size_res = ctypes.c_int()  # Init var for size of result
+        mem = ctypes.POINTER(ctypes.c_int)()
+        cpp_lib.vec_AND(s1, size_s1, s2, size_s2, ctypes.byref(size_res), ctypes.byref(mem))
+        return Spin_determinant_tuple(sorted([mem[i] for i in range(size_res.value)]))
 
     def __rand__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __and__
@@ -85,7 +122,7 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 1)) | Spin_determinant_tuple((2, 3))
         (0, 1, 2, 3)
         """
-        return Spin_determinant_tuple(set(self) | set(s_tuple))
+        return Spin_determinant_tuple(sorted(set(self) | set(s_tuple)))
 
     def __ror__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __or__
@@ -104,7 +141,7 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((2, 3))
         (0, 1, 2, 3)
         """
-        return Spin_determinant_tuple(set(self) ^ set(s_tuple))
+        return Spin_determinant_tuple(sorted(set(self) ^ set(s_tuple)))
 
     def __rxor__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __xor__
@@ -524,7 +561,7 @@ class Determinant(tuple):
     _fields = ("alpha", "beta")
 
     # Rename function
-    exc_dg = cpp_lib.exc_degree
+    exc_dg = cpp_lib.exc_degree_bitstring
     # Define argument types and return types
     exc_dg.argtypes = (
         ctypes.c_uint64,
