@@ -747,8 +747,9 @@ class Determinant(tuple):
         # Unpack alpha, beta holes
         lh_a, lp_a = alpha_exc
         lh_b, lp_b = beta_exc
-
-        if isinstance(lh_a, tuple):
+        false = False
+        #temp always false because its broken and doesnt work
+        if not false:
             # Call C++ for alpha
             # pointer for size of the result
             size_res_a = ctypes.c_int()
