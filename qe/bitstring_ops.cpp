@@ -106,7 +106,7 @@ extern "C"{
         // Declare result
         sdet_vec_t OR_res;
         // For this function; vectors are assumed to be sorted. This is fine, since our spindets will always be sorted 
-        std::set_intersection(sdet_i_ptr, sdet_i_ptr + size_i, sdet_j_ptr, sdet_j_ptr + size_j, std::back_inserter(OR_res));
+        std::set_union(sdet_i_ptr, sdet_i_ptr + size_i, sdet_j_ptr, sdet_j_ptr + size_j, std::back_inserter(OR_res));
         
         // How big is my result? Compute size_t, and set the passed size_res_ptr to point to the memory address of size_res
         int size_res = OR_res.size();
