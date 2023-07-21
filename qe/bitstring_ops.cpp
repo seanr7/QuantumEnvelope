@@ -126,6 +126,39 @@ extern "C"{
         // Outside the function now... 
     }
 
+    void apply_excitation_tuple(const int* self, const size_t size_self, const int* lh, const size_t size_lh, 
+                                const int* lp, const size_t size_lp, int* size_res_ptr, int** p) {
+        /* Inputs:
+        self, size_self, pointer to numpy array and size of the array
+        lh, size_lh, pointer to numpy array and size of the array
+        lp, size_lp, pointer to numpy array and size of the array
+        :param size_ptr          : pointer to address in memory where size of result will be stored
+        */
+
+        // Declare result
+        sdet_vec_t OR_res, XOR_res;
+        // For this function; vectors are assumed to be sorted. This is fine, since our spindets will always be sorted 
+        // operations needed for apply_excitation
+        std::set_union(lh, lh + size_lh, lp, lp + size_lp, std::back_inserter(OR_res));
+        std::set_symmetric_difference(self, self + size_self, OR_res.begin(), OR_res.end(), std::back_inserter(XOR_res));
+        // How big is my result? Compute size_t, and set the passed size_res_ptr to point to the memory address of size_res
+        int size_res = XOR_res.size();
+        // Copy at size_res_ptr, size_ptr
+        *size_res_ptr = size_res; 
+        
+        // Get pointer to the data contained in the result...
+        // malloc allocates size_res * sizeof(int) bytes, and read me the address at (the start of) this contiguous slab of memory
+        int *result_ptr = (int *) malloc(size_res * sizeof(int));
+
+        for (int i = 0; i < size_res; i++){
+            // result_ptr[i] = &(result_ptr[0] + i * size(*result_ptr[0]))
+            result_ptr[i] = XOR_res[i];
+        }
+        // Or, *p = &result_ptr[0] 
+        *p = result_ptr;
+        // Outside the function now... 
+    }
+
     struct ExcDegreeResult {
         int ed_up;
         int ed_dn;
@@ -141,7 +174,12 @@ extern "C"{
 
     // Excitation degree function for vectors.
     int exc_degree_tuple(const int* det_I, const sdet_t size_det_I, const int* det_J, const sdet_t size_det_J){
-    
+    /* Inputs:
+        :param det_I, size_det_I:  Pointer to tuple in python with determinant and the size of the tuple
+        :param sdet_j_ptr, size_j: Pointer to tuple in python with determinant and the size of the tuple
+        :param size_ptr          : pointer to address in memory where size of result will be stored
+    */
+
     // define the vectors the set symmetric difference will do into
     sdet_vec_t XOR_res;
 
@@ -153,6 +191,7 @@ extern "C"{
     return result;
     }
 }
+
 
 // int main(){
 
