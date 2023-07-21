@@ -579,16 +579,25 @@ class Determinant(tuple):
 
     _fields = ("alpha", "beta")
 
-    # Rename function
-    exc_dg = cpp_lib.exc_degree_bitstring
-    # Define argument types and return types
-    exc_dg.argtypes = (
+    # Rename functions
+    exc_dg_bitstring = cpp_lib.exc_degree_bitstring
+    exc_dg_tuple = cpp_lib.exc_degree_tuple
+    # Define argument types for tuple and bitstring exc_degree
+    exc_dg_bitstring.argtypes = [
         ctypes.c_uint64,
         ctypes.c_uint64,
         ctypes.c_uint64,
         ctypes.c_uint64,
-    )
-    exc_dg.restype = ExcDegreeResult
+    ]
+    exc_dg_tuple.argtypes = [
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_int,
+    ]
+    # Define the return types for tuple and bitstring exc_degree
+    exc_dg_bitstring.restype = ExcDegreeResult
+    exc_dg_tuple.restype = ctypes.c_int
 
     # TODO: Add extra param for spin_det type
 
@@ -746,12 +755,30 @@ class Determinant(tuple):
         >>> Determinant(0b11, 0b11).exc_degree(Determinant(0b11, 0b101000))
         (0, 2)
         """
-        if isinstance(self.alpha, tuple):  # is tuple:
-            ed_up = (self.alpha ^ det_J.alpha).popcnt() // 2
-            ed_dn = (self.beta ^ det_J.beta).popcnt() // 2
+
+        if isinstance(self.alpha, tuple):
+            # If its a tuple
+            # NOTE
+            # We call the C++ function twice because having 8 arguments into the function causes a segmentation fault for some reason
+            # Ideally this will just be one function in the future
+
+            # (ctypes.c_int * len(self.alpha))(*self.alpha) converts the tuple into a ctypes array to be sent
+            ed_up = Determinant.exc_dg_tuple(
+                (ctypes.c_int * len(self.alpha))(*self.alpha),
+                len(self.alpha),
+                (ctypes.c_int * len(det_J.alpha))(*det_J.alpha),
+                len(det_J.alpha),
+            )
+            ed_dn = Determinant.exc_dg_tuple(
+                (ctypes.c_int * len(self.beta))(*self.beta),
+                len(self.beta),
+                (ctypes.c_int * len(det_J.beta))(*det_J.beta),
+                len(det_J.beta),
+            )
             return ed_up, ed_dn
         else:
-            result = Determinant.exc_dg(self.alpha, self.beta, det_J.alpha, det_J.beta)
+            # If its a bitstring
+            result = Determinant.exc_dg_bitstring(self.alpha, self.beta, det_J.alpha, det_J.beta)
             return result.ed_up, result.ed_dn
 
     def is_connected(self, det_j) -> Tuple[int, int]:

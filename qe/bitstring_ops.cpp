@@ -140,6 +140,18 @@ extern "C"{
     }
 
     // Excitation degree function for vectors.
+    int exc_degree_tuple(const int* det_I, const sdet_t size_det_I, const int* det_J, const sdet_t size_det_J){
+    
+    // define the vectors the set symmetric difference will do into
+    sdet_vec_t XOR_res;
+
+    // take the symmetric difference of both alpha and beta electrons 
+    std::set_symmetric_difference(det_I, det_I + size_det_I, det_J, det_J + size_det_J, std::back_inserter(XOR_res));
+    // divide the size by 2 because they come in pairs of 2
+    int result = XOR_res.size() / 2;
+
+    return result;
+    }
 }
 
 // int main(){
