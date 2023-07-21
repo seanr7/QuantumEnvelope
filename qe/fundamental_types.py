@@ -42,26 +42,29 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),
     ]
     cpp_lib.vec_AND.restype = None
+    vec_AND = cpp_lib.vec_AND
 
     cpp_lib.vec_OR.argtypes = [
-        ctypes.POINTER(ctypes.c_int),
+        np.ctypeslib.ndpointer(dtype=np.intc),
         ctypes.c_int,
-        ctypes.POINTER(ctypes.c_int),
+        np.ctypeslib.ndpointer(dtype=np.intc),
         ctypes.c_int,
         ctypes.POINTER(ctypes.c_int),
         ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),
     ]
-    cpp_lib.vec_AND.restype = None
+    cpp_lib.vec_OR.restype = None
+    vec_OR = cpp_lib.vec_OR
 
     cpp_lib.vec_XOR.argtypes = [
-        ctypes.POINTER(ctypes.c_int),
+        np.ctypeslib.ndpointer(dtype=np.intc),
         ctypes.c_int,
-        ctypes.POINTER(ctypes.c_int),
+        np.ctypeslib.ndpointer(dtype=np.intc),
         ctypes.c_int,
         ctypes.POINTER(ctypes.c_int),
         ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),
     ]
-    cpp_lib.vec_AND.restype = None
+    cpp_lib.vec_XOR.restype = None
+    vec_XOR = cpp_lib.vec_XOR
 
     def occupied_orbitals(self) -> Iterator[OrbitalIdx]:
         """Yield occupied orbital indices in this instance of spin determinant"""
@@ -96,11 +99,11 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 2, 3)) & Spin_determinant_tuple((2, 3))
         (2, 3)
         """
-        s1, s2 = np.array(self, dtype=np.intc), np.array(s_tuple, dtype=np.intc)
+        s1, s2 = np.array(sorted(self), dtype=np.intc), np.array(sorted(s_tuple), dtype=np.intc)
         size_s1, size_s2 = len(self), len(s_tuple)
         size_res = ctypes.c_int()  # Init var for size of result
         mem = ctypes.POINTER(ctypes.c_int)()
-        cpp_lib.vec_AND(s1, size_s1, s2, size_s2, ctypes.byref(size_res), ctypes.byref(mem))
+        Spin_determinant_tuple.vec_AND(s1, size_s1, s2, size_s2, ctypes.byref(size_res), ctypes.byref(mem))
         return Spin_determinant_tuple(sorted([mem[i] for i in range(size_res.value)]))
 
     def __rand__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
@@ -122,7 +125,12 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 1)) | Spin_determinant_tuple((2, 3))
         (0, 1, 2, 3)
         """
-        return Spin_determinant_tuple(sorted(set(self) | set(s_tuple)))
+        s1, s2 = np.array(sorted(self), dtype=np.intc), np.array(sorted(s_tuple), dtype=np.intc)
+        size_s1, size_s2 = len(self), len(s_tuple)
+        size_res = ctypes.c_int()  # Init var for size of result
+        mem = ctypes.POINTER(ctypes.c_int)()
+        Spin_determinant_tuple.vec_OR(s1, size_s1, s2, size_s2, ctypes.byref(size_res), ctypes.byref(mem))
+        return Spin_determinant_tuple(sorted([mem[i] for i in range(size_res.value)]))
 
     def __ror__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __or__
@@ -141,7 +149,12 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((2, 3))
         (0, 1, 2, 3)
         """
-        return Spin_determinant_tuple(sorted(set(self) ^ set(s_tuple)))
+        s1, s2 = np.array(sorted(self), dtype=np.intc), np.array(sorted(s_tuple), dtype=np.intc)
+        size_s1, size_s2 = len(self), len(s_tuple)
+        size_res = ctypes.c_int()  # Init var for size of result
+        mem = ctypes.POINTER(ctypes.c_int)()
+        Spin_determinant_tuple.vec_XOR(s1, size_s1, s2, size_s2, ctypes.byref(size_res), ctypes.byref(mem))
+        return Spin_determinant_tuple(sorted([mem[i] for i in range(size_res.value)]))
 
     def __rxor__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __xor__
@@ -248,9 +261,9 @@ class Spin_determinant_bitstring(int):
     cpp_lib.bitstring_OR.restype = ctypes.c_ulonglong
     bitstring_OR = cpp_lib.bitstring_OR
 
-    cpp_lib.bitstring_popcnt.argtypes = [ctypes.c_ulonglong]
-    cpp_lib.bitstring_popcnt.restype = ctypes.c_ulonglong
-    bitstring_popcnt = cpp_lib.bitstring_popcnt
+    cpp_lib.bitstring_POPCNT.argtypes = [ctypes.c_ulonglong]
+    cpp_lib.bitstring_POPCNT.restype = ctypes.c_ulonglong
+    bitstring_POPCNT = cpp_lib.bitstring_POPCNT
 
     def occupied_orbitals(self) -> Iterator[OrbitalIdx]:
         """Yield occupied orbital indices in this instance of spin determinant"""
@@ -445,7 +458,7 @@ class Spin_determinant_bitstring(int):
 
     def popcnt(self) -> int:
         """Perform a `popcount'; number of bits set to True in self"""
-        return Spin_determinant_bitstring.bitstring_popcnt(self)
+        return Spin_determinant_bitstring.bitstring_POPCNT(self)
 
     def get_holes(self, sdet_j) -> Tuple[OrbitalIdx, ...]:
         """Return tuple of holes (orbital indices) in the excitation from self -> sdet_j

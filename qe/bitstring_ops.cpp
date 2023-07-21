@@ -28,7 +28,7 @@ extern "C"{
         return sdet_i | sdet_j;
     }
 
-    int bitstring_popcnt(const sdet_t sdet){
+    int bitstring_POPCNT(const sdet_t sdet){
         std::bitset<64> bs_sdet(sdet);
         return bs_sdet.count();
     }
@@ -134,8 +134,8 @@ extern "C"{
     // Excitation degree function only for bit strings.
     ExcDegreeResult exc_degree_bitstring(sdet_t det_I_alpha, sdet_t det_I_beta, sdet_t det_J_alpha, sdet_t det_J_beta) {
         ExcDegreeResult result;
-        result.ed_up = bitstring_popcnt(bitstring_XOR(det_I_alpha, det_J_alpha)) / 2;
-        result.ed_dn = bitstring_popcnt(bitstring_XOR(det_I_beta, det_J_beta)) / 2;
+        result.ed_up = bitstring_POPCNT(bitstring_XOR(det_I_alpha, det_J_alpha)) / 2;
+        result.ed_dn = bitstring_POPCNT(bitstring_XOR(det_I_beta, det_J_beta)) / 2;
         return result;
     }
 
