@@ -103,7 +103,9 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         size_s1, size_s2 = len(self), len(s_tuple)
         size_res = ctypes.c_int()  # Init var for size of result
         mem = ctypes.POINTER(ctypes.c_int)()
-        Spin_determinant_tuple.vec_AND(s1, size_s1, s2, size_s2, ctypes.byref(size_res), ctypes.byref(mem))
+        Spin_determinant_tuple.vec_AND(
+            s1, size_s1, s2, size_s2, ctypes.byref(size_res), ctypes.byref(mem)
+        )
         return Spin_determinant_tuple(sorted([mem[i] for i in range(size_res.value)]))
 
     def __rand__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
@@ -129,7 +131,9 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         size_s1, size_s2 = len(self), len(s_tuple)
         size_res = ctypes.c_int()  # Init var for size of result
         mem = ctypes.POINTER(ctypes.c_int)()
-        Spin_determinant_tuple.vec_OR(s1, size_s1, s2, size_s2, ctypes.byref(size_res), ctypes.byref(mem))
+        Spin_determinant_tuple.vec_OR(
+            s1, size_s1, s2, size_s2, ctypes.byref(size_res), ctypes.byref(mem)
+        )
         return Spin_determinant_tuple(sorted([mem[i] for i in range(size_res.value)]))
 
     def __ror__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
@@ -153,7 +157,9 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         size_s1, size_s2 = len(self), len(s_tuple)
         size_res = ctypes.c_int()  # Init var for size of result
         mem = ctypes.POINTER(ctypes.c_int)()
-        Spin_determinant_tuple.vec_XOR(s1, size_s1, s2, size_s2, ctypes.byref(size_res), ctypes.byref(mem))
+        Spin_determinant_tuple.vec_XOR(
+            s1, size_s1, s2, size_s2, ctypes.byref(size_res), ctypes.byref(mem)
+        )
         return Spin_determinant_tuple(sorted([mem[i] for i in range(size_res.value)]))
 
     def __rxor__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
