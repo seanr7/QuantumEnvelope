@@ -5,7 +5,7 @@
 #include <string>
 #include <bitset>
 #include <stdlib.h>
-
+#include <algorithm>    // std::set_intersection, std::sort
 // In hpp header 
 // extern "C"{
 //     void  bitstring_XOR(const sdet_t sdet_i, const sdet_t sdet_j)
