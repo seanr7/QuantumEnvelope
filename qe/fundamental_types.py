@@ -588,12 +588,15 @@ class Determinant(tuple):
         ctypes.c_uint64,
         ctypes.c_uint64,
     ]
+
     exc_dg_tuple.argtypes = [
         ctypes.POINTER(ctypes.c_int),
-        ctypes.c_int,
         ctypes.POINTER(ctypes.c_int),
-        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_int)
     ]
+
     apply_excitation_tuple.argtypes = [
         np.ctypeslib.ndpointer(dtype=np.intc),
         ctypes.c_int,
@@ -604,10 +607,13 @@ class Determinant(tuple):
         ctypes.POINTER(ctypes.c_int),
         ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),
     ]
+
     # Define the return types for tuple and bitstring exc_degree
     exc_dg_bitstring.restype = ExcDegreeResult
-    exc_dg_tuple.restype = ctypes.c_int
+    exc_dg_tuple.restype = ExcDegreeResult
     apply_excitation_tuple.restype = None
+
+
     # TODO: Add extra param for spin_det type
 
     def __new__(_cls, *args, **kwargs):
@@ -832,26 +838,25 @@ class Determinant(tuple):
 
         if isinstance(self.alpha, tuple):
             # If its a tuple
-            # NOTE
-            # We call the C++ function twice because having 8 arguments into the function causes a segmentation fault for some reason
-            # Ideally this will just be one function in the future
+            
+            # pack the length of all of the tuples into a single tuple to be sent to C++
+            sizes_of_tuples = (len(self.alpha), len(self.beta), len(det_J.alpha), len(det_J.beta))
 
-            # (ctypes.c_int * len(self.alpha))(*self.alpha) converts the tuple into a ctypes array to be sent
-            ed_up = Determinant.exc_dg_tuple(
-                (ctypes.c_int * len(self.alpha))(*self.alpha),
-                len(self.alpha),
-                (ctypes.c_int * len(det_J.alpha))(*det_J.alpha),
-                len(det_J.alpha),
+            '''
+            (ctypes.c_int * len(self.alpha))(*self.alpha) converts the tuple into a ctypes array to be sent
+            '''
+            # call the C++ function
+            result = Determinant.exc_dg_tuple((ctypes.c_int * len(self.alpha))(*self.alpha),
+                                              (ctypes.c_int * len(self.beta))(*self.beta),
+                                              (ctypes.c_int * len(det_J.alpha))(*det_J.alpha), 
+                                              (ctypes.c_int * len(det_J.beta))(*det_J.beta),
+                                              (ctypes.c_int * len(sizes_of_tuples))(*sizes_of_tuples)
             )
-            ed_dn = Determinant.exc_dg_tuple(
-                (ctypes.c_int * len(self.beta))(*self.beta),
-                len(self.beta),
-                (ctypes.c_int * len(det_J.beta))(*det_J.beta),
-                len(det_J.beta),
-            )
-            return ed_up, ed_dn
+            return result.ed_up, result.ed_dn
         else:
             # If its a bitstring
+
+            # Call the C++ function
             result = Determinant.exc_dg_bitstring(self.alpha, self.beta, det_J.alpha, det_J.beta)
             return result.ed_up, result.ed_dn
 

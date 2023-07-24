@@ -137,10 +137,11 @@ extern "C"{
 
         // Declare result
         sdet_vec_t OR_res, XOR_res;
-        // For this function; vectors are assumed to be sorted. This is fine, since our spindets will always be sorted 
+
         // operations needed for apply_excitation
         std::set_union(lh, lh + size_lh, lp, lp + size_lp, std::back_inserter(OR_res));
         std::set_symmetric_difference(self, self + size_self, OR_res.begin(), OR_res.end(), std::back_inserter(XOR_res));
+
         // How big is my result? Compute size_t, and set the passed size_res_ptr to point to the memory address of size_res
         int size_res = XOR_res.size();
         // Copy at size_res_ptr, size_ptr
@@ -154,9 +155,9 @@ extern "C"{
             // result_ptr[i] = &(result_ptr[0] + i * size(*result_ptr[0]))
             result_ptr[i] = XOR_res[i];
         }
+
         // Or, *p = &result_ptr[0] 
         *p = result_ptr;
-        // Outside the function now... 
     }
 
     struct ExcDegreeResult {
@@ -166,27 +167,49 @@ extern "C"{
 
     // Excitation degree function only for bit strings.
     ExcDegreeResult exc_degree_bitstring(sdet_t det_I_alpha, sdet_t det_I_beta, sdet_t det_J_alpha, sdet_t det_J_beta) {
+        /* Inputs:
+        All of the inputs are unsigned integers containing values for electron positions
+        */
+
+        // Define result which we will be returning 
         ExcDegreeResult result;
+        // calculate the ed_up and ed_dn and divide by two because they come in pairs of two
         result.ed_up = bitstring_POPCNT(bitstring_XOR(det_I_alpha, det_J_alpha)) / 2;
         result.ed_dn = bitstring_POPCNT(bitstring_XOR(det_I_beta, det_J_beta)) / 2;
+
         return result;
     }
 
+
     // Excitation degree function for vectors.
-    int exc_degree_tuple(const int* det_I, const sdet_t size_det_I, const int* det_J, const sdet_t size_det_J){
-    /* Inputs:
-        :param det_I, size_det_I:  Pointer to tuple in python with determinant and the size of the tuple
-        :param sdet_j_ptr, size_j: Pointer to tuple in python with determinant and the size of the tuple
-        :param size_ptr          : pointer to address in memory where size of result will be stored
+    ExcDegreeResult exc_degree_tuple(const int* det_I_alpha, const int* det_I_beta, const int* det_J_alpha,  const int* det_J_beta, const int* sizes_of_tuples){
+    
+    // Define result which we will be returning 
+    ExcDegreeResult result;
+
+    // define the vectors that set symmetric difference will output to
+    sdet_vec_t XOR_res_a, XOR_res_b;
+
+    // size_of_sizes is always four because its the number of arguments that we take in for this function excluding sizes_of_tuples
+    // we always take in 4 tuples from python so its always 4
+    int size_of_sizes = 4;
+
+    // create a vector from the pointer of the tuple so we can access certain elements 
+    std::vector<int> sizes_vector(sizes_of_tuples, sizes_of_tuples + size_of_sizes);
+
+    /*
+    sizes_vector[0] = size of det_I_alpha  -  len(det_I_alpha)
+    sizes_vector[1] = size of det_I_beta   -  len(det_I_beta)
+    sizes_vector[2] = size of det_J_alpha  -  len(det_J_alpha)
+    sizes_vector[3] = size of det_J_beta   -  len(det_J_beta)
     */
 
-    // define the vectors the set symmetric difference will do into
-    sdet_vec_t XOR_res;
-
     // take the symmetric difference of both alpha and beta electrons 
-    std::set_symmetric_difference(det_I, det_I + size_det_I, det_J, det_J + size_det_J, std::back_inserter(XOR_res));
+    std::set_symmetric_difference(det_I_alpha, det_I_alpha + sizes_vector[0], det_J_alpha, det_J_alpha + sizes_vector[2], std::back_inserter(XOR_res_a));
+    std::set_symmetric_difference(det_I_beta, det_I_beta + sizes_vector[1], det_J_beta, det_J_beta + sizes_vector[3], std::back_inserter(XOR_res_b));
     // divide the size by 2 because they come in pairs of 2
-    int result = XOR_res.size() / 2;
+    result.ed_up = XOR_res_a.size() / 2;
+    result.ed_dn = XOR_res_b.size() / 2;  
 
     return result;
     }
