@@ -748,65 +748,73 @@ class Determinant(tuple):
         lh_a, lp_a = alpha_exc
         lh_b, lp_b = beta_exc
 
-        # if isinstance(lh_a, tuple):
-        #     # Call C++ for alpha
-        #     # pointer for size of the result
-        #     size_res_a = ctypes.c_int()
-        #     # memory for the returned tuple
-        #     mem_alpha = ctypes.POINTER(ctypes.c_int)()
-        #     # convert the tuples into numpy arrays
-        #     self_a_arr, lh_a_arr, lp_a_arr = (
-        #         np.array(sorted(self.alpha), dtype=np.intc),
-        #         np.array(sorted(lh_a), dtype=np.intc),
-        #         np.array(sorted(lp_a), dtype=np.intc),
-        #     )
-        #     # get the size of the numpy arrays
-        #     size_self_a, size_lh_a, size_lp_a = len(self_a_arr), len(lh_a_arr), len(lp_a_arr)
-        #     # Call the apply_excitation_tuple from C++
-        #     Determinant.apply_excitation_tuple(
-        #         self_a_arr,
-        #         size_self_a,
-        #         lh_a_arr,
-        #         size_lh_a,
-        #         lp_a_arr,
-        #         size_lp_a,
-        #         ctypes.byref(size_res_a),
-        #         ctypes.byref(mem_alpha),
-        #     )
-        #     # Call C++ for beta
-        #     # pointer for size of the result
-        #     size_res_b = ctypes.c_int()
-        #     # memory for the returned tuple
-        #     mem_beta = ctypes.POINTER(ctypes.c_int)()
-        #     # convert the tuples into numpy arrays
-        #     self_b_arr, lh_b_arr, lp_b_arr = (
-        #         np.array(sorted(self.beta), dtype=np.intc),
-        #         np.array(sorted(lh_b), dtype=np.intc),
-        #         np.array(sorted(lp_b), dtype=np.intc),
-        #     )
-        #     # get the size of the numpy arrays
-        #     size_self_b, size_lh_b, size_lp_b = len(self_b_arr), len(lh_b_arr), len(lp_b_arr)
-        #     # Call the apply_excitation_tuple from C++
-        #     Determinant.apply_excitation_tuple(
-        #         self_b_arr,
-        #         size_self_b,
-        #         lh_b_arr,
-        #         size_lh_b,
-        #         lp_b_arr,
-        #         size_lp_b,
-        #         ctypes.byref(size_res_b),
-        #         ctypes.byref(mem_beta),
-        #     )
-        #     return Determinant(
-        #         tuple([mem_alpha[i] for i in range(size_res_a.value)]),
-        #         tuple([mem_beta[i] for i in range(size_res_b.value)]),
-        #     )
-        #     # TODO these tuples ^^^^ may need to be sorted
-        # else:
-        #     # IF its bitstring just do the normal operations in python
-        excited_sdet_a = self.alpha ^ (tuple(sorted(set(lh_a) | set(lp_a))))
-        excited_sdet_b = self.beta ^ (tuple(sorted(set(lh_b) | set(lp_b))))
-        return Determinant(excited_sdet_a, excited_sdet_b)
+        if isinstance(self.alpha, tuple) and isinstance(self.beta, tuple):
+            # Call C++ for alpha
+            # pointer for size of the result
+            size_res_a = ctypes.c_int()
+            # memory for the returned tuple
+            mem_alpha = ctypes.POINTER(ctypes.c_int)()
+            # convert the tuples into numpy arrays
+            self_a_arr, lh_a_arr, lp_a_arr = (
+                np.array(sorted(self.alpha), dtype=np.intc),
+                np.array(sorted(lh_a), dtype=np.intc),
+                np.array(sorted(lp_a), dtype=np.intc),
+            )
+            # get the size of the numpy arrays
+            size_self_a, size_lh_a, size_lp_a = (
+                len(self_a_arr),
+                len(lh_a_arr),
+                len(lp_a_arr),
+            )
+            # Call the apply_excitation_tuple from C++
+            Determinant.apply_excitation_tuple(
+                self_a_arr,
+                size_self_a,
+                lh_a_arr,
+                size_lh_a,
+                lp_a_arr,
+                size_lp_a,
+                ctypes.byref(size_res_a),
+                ctypes.byref(mem_alpha),
+            )
+            # Call C++ for beta
+            # pointer for size of the result
+            size_res_b = ctypes.c_int()
+            # memory for the returned tuple
+            mem_beta = ctypes.POINTER(ctypes.c_int)()
+            # convert the tuples into numpy arrays
+            self_b_arr, lh_b_arr, lp_b_arr = (
+                np.array(sorted(self.beta), dtype=np.intc),
+                np.array(sorted(lh_b), dtype=np.intc),
+                np.array(sorted(lp_b), dtype=np.intc),
+            )
+            # get the size of the numpy arrays
+            size_self_b, size_lh_b, size_lp_b = (
+                len(self_b_arr),
+                len(lh_b_arr),
+                len(lp_b_arr),
+            )
+            # Call the apply_excitation_tuple from C++
+            Determinant.apply_excitation_tuple(
+                self_b_arr,
+                size_self_b,
+                lh_b_arr,
+                size_lh_b,
+                lp_b_arr,
+                size_lp_b,
+                ctypes.byref(size_res_b),
+                ctypes.byref(mem_beta),
+            )
+            return Determinant(
+                tuple([mem_alpha[i] for i in range(size_res_a.value)]),
+                tuple([mem_beta[i] for i in range(size_res_b.value)]),
+            )
+            # TODO these tuples ^^^^ may need to be sorted
+        else:
+            # IF its bitstring just do the normal operations in python
+            excited_sdet_a = self.alpha ^ (tuple(sorted(set(lh_a) | set(lp_a))))
+            excited_sdet_b = self.beta ^ (tuple(sorted(set(lh_b) | set(lp_b))))
+            return Determinant(excited_sdet_a, excited_sdet_b)
 
     def exc_degree(self, det_J: NamedTuple) -> Tuple[int, int]:
         # Exc is the function from cpp that was loaded into drivers.py
