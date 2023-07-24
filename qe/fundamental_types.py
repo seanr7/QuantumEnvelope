@@ -594,7 +594,7 @@ class Determinant(tuple):
         ctypes.POINTER(ctypes.c_int),
         ctypes.POINTER(ctypes.c_int),
         ctypes.POINTER(ctypes.c_int),
-        ctypes.POINTER(ctypes.c_int)
+        ctypes.POINTER(ctypes.c_int),
     ]
 
     apply_excitation_tuple.argtypes = [
@@ -612,7 +612,6 @@ class Determinant(tuple):
     exc_dg_bitstring.restype = ExcDegreeResult
     exc_dg_tuple.restype = ExcDegreeResult
     apply_excitation_tuple.restype = None
-
 
     # TODO: Add extra param for spin_det type
 
@@ -838,19 +837,20 @@ class Determinant(tuple):
 
         if isinstance(self.alpha, tuple):
             # If its a tuple
-            
+
             # pack the length of all of the tuples into a single tuple to be sent to C++
             sizes_of_tuples = (len(self.alpha), len(self.beta), len(det_J.alpha), len(det_J.beta))
 
-            '''
+            """
             (ctypes.c_int * len(self.alpha))(*self.alpha) converts the tuple into a ctypes array to be sent
-            '''
+            """
             # call the C++ function
-            result = Determinant.exc_dg_tuple((ctypes.c_int * len(self.alpha))(*self.alpha),
-                                              (ctypes.c_int * len(self.beta))(*self.beta),
-                                              (ctypes.c_int * len(det_J.alpha))(*det_J.alpha), 
-                                              (ctypes.c_int * len(det_J.beta))(*det_J.beta),
-                                              (ctypes.c_int * len(sizes_of_tuples))(*sizes_of_tuples)
+            result = Determinant.exc_dg_tuple(
+                (ctypes.c_int * len(self.alpha))(*self.alpha),
+                (ctypes.c_int * len(self.beta))(*self.beta),
+                (ctypes.c_int * len(det_J.alpha))(*det_J.alpha),
+                (ctypes.c_int * len(det_J.beta))(*det_J.beta),
+                (ctypes.c_int * len(sizes_of_tuples))(*sizes_of_tuples),
             )
             return result.ed_up, result.ed_dn
         else:
