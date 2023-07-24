@@ -1,6 +1,9 @@
 from typing import Tuple, Dict, NamedTuple, List, NewType, Iterator
 from itertools import chain, product, combinations, takewhile
 from functools import partial, cache
+from collections import defaultdict
+import ctypes
+import numpy as np
 
 # Orbital index (0,1,2,...,n_orb-1)
 OrbitalIdx = NewType("OrbitalIdx", int)
@@ -15,6 +18,9 @@ Two_electron_integral_index_phase = Tuple[Two_electron_integral_index, bool]
 # $<i|h|k> = \int \phi_i(r) (-\frac{1}{2} \Delta + V_en ) \phi_k(r) dr$
 One_electron_integral = Dict[Tuple[OrbitalIdx, OrbitalIdx], float]
 
+# Load Cpp library with various Cpp functions
+cpp_lib = ctypes.CDLL("./qe/bitstring_ops.so")
+
 
 #    ___
 #     |     ._  |  _
@@ -26,6 +32,44 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
     """NewType for |Spin_determinant| as tuple of occupied orbital indices
     Certain logical operations overloaded as set operations
     """
+
+    cpp_lib.vec_AND.argtypes = [
+        np.ctypeslib.ndpointer(dtype=np.intc),
+        ctypes.c_int,
+        np.ctypeslib.ndpointer(dtype=np.intc),
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),
+    ]
+    cpp_lib.vec_AND.restype = None
+    vec_AND = cpp_lib.vec_AND
+
+    cpp_lib.vec_OR.argtypes = [
+        np.ctypeslib.ndpointer(dtype=np.intc),
+        ctypes.c_int,
+        np.ctypeslib.ndpointer(dtype=np.intc),
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),
+    ]
+    cpp_lib.vec_OR.restype = None
+    vec_OR = cpp_lib.vec_OR
+
+    cpp_lib.vec_XOR.argtypes = [
+        np.ctypeslib.ndpointer(dtype=np.intc),
+        ctypes.c_int,
+        np.ctypeslib.ndpointer(dtype=np.intc),
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),
+    ]
+    cpp_lib.vec_XOR.restype = None
+    vec_XOR = cpp_lib.vec_XOR
+
+    def occupied_orbitals(self) -> Iterator[OrbitalIdx]:
+        """Yield occupied orbital indices in this instance of spin determinant"""
+        for i in self:
+            yield i
 
     def convert_repr(self, Norb):
         """Convert |Spin_determinant_tuple| to |Spin_determinant_bitstring| (occupation number) representation
@@ -42,7 +86,7 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         for o in self:
             bitstr[-(o + 1)] = "1"
 
-        # Return |Bitstring| representation of this |Determinant|
+        # Return |int| representation of this |Spin_determinant_tuple|
         return Spin_determinant_bitstring(int(("".join(bitstr)), 2))
 
     def __and__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx, ...]:
@@ -52,8 +96,17 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         (0,)
         >>> Spin_determinant_tuple((0, 1)) & Spin_determinant_tuple((2, 3))
         ()
+        >>> Spin_determinant_tuple((0, 2, 3)) & Spin_determinant_tuple((2, 3))
+        (2, 3)
         """
-        return Spin_determinant_tuple(set(self) & set(s_tuple))
+        s1, s2 = np.array(sorted(self), dtype=np.intc), np.array(sorted(s_tuple), dtype=np.intc)
+        size_s1, size_s2 = len(self), len(s_tuple)
+        size_res = ctypes.c_int()  # Init var for size of result
+        mem = ctypes.POINTER(ctypes.c_int)()
+        Spin_determinant_tuple.vec_AND(
+            s1, size_s1, s2, size_s2, ctypes.byref(size_res), ctypes.byref(mem)
+        )
+        return Spin_determinant_tuple(sorted([mem[i] for i in range(size_res.value)]))
 
     def __rand__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __and__
@@ -74,7 +127,14 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 1)) | Spin_determinant_tuple((2, 3))
         (0, 1, 2, 3)
         """
-        return Spin_determinant_tuple(set(self) | set(s_tuple))
+        s1, s2 = np.array(sorted(self), dtype=np.intc), np.array(sorted(s_tuple), dtype=np.intc)
+        size_s1, size_s2 = len(self), len(s_tuple)
+        size_res = ctypes.c_int()  # Init var for size of result
+        mem = ctypes.POINTER(ctypes.c_int)()
+        Spin_determinant_tuple.vec_OR(
+            s1, size_s1, s2, size_s2, ctypes.byref(size_res), ctypes.byref(mem)
+        )
+        return Spin_determinant_tuple(sorted([mem[i] for i in range(size_res.value)]))
 
     def __ror__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __or__
@@ -93,7 +153,14 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((2, 3))
         (0, 1, 2, 3)
         """
-        return Spin_determinant_tuple(set(self) ^ set(s_tuple))
+        s1, s2 = np.array(sorted(self), dtype=np.intc), np.array(sorted(s_tuple), dtype=np.intc)
+        size_s1, size_s2 = len(self), len(s_tuple)
+        size_res = ctypes.c_int()  # Init var for size of result
+        mem = ctypes.POINTER(ctypes.c_int)()
+        Spin_determinant_tuple.vec_XOR(
+            s1, size_s1, s2, size_s2, ctypes.byref(size_res), ctypes.byref(mem)
+        )
+        return Spin_determinant_tuple(sorted([mem[i] for i in range(size_res.value)]))
 
     def __rxor__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __xor__
@@ -112,19 +179,49 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 1)) - Spin_determinant_tuple((0, 1))
         ()
         """
+        # TODO: Not using this anywhere atm, but keeping as member in case we find functionality for it
         return Spin_determinant_tuple(set(self) - set(s_tuple))
 
-    def __rsub__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
+    def __rsub__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx, ...]:
         """Reverse overloaded __sub__
         Convert arg `s_tuple' to |Spin_determinant_tuple|, then perform __sub__ since operation is not communative
         >>> (0, 1, 2, 3) - Spin_determinant_tuple((0, 2))
         (1, 3)
         """
+        # TODO: Not using this anywhere atm, but keeping as member in case we find functionality for it
         return Spin_determinant_tuple(s_tuple).__sub__(self)
 
     def popcnt(self) -> int:
-        """Perform a `popcount'; return length of the tuple"""
+        """Perform a `popcount'; return length of the tuple
+        >>> Spin_determinant_tuple((0, 2, 3)).popcnt()
+        3
+        """
         return len(self)
+
+    def get_holes(self, sdet_j: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx, ...]:
+        """Return tuple of holes (orbital indices) in the excitation from self -> sdet_j
+        >>> Spin_determinant_tuple((0, 2)).get_holes((0, 3))
+        (2,)
+        >>> Spin_determinant_tuple((0, 2)).get_holes((1, 3))
+        (0, 2)
+        >>> Spin_determinant_tuple((0, 2)).get_holes((0, 2))
+        ()
+        """
+        # TODO: These are returned as |Spin_determinant_tuple|; necessary, because we want to abstract over `popcnt()`
+        # Will compute number of holes in certain applications... E.g., in constrained excitations. So want the returned |tuple| to have that member function
+        return (self ^ sdet_j) & self
+
+    def get_particles(self, sdet_j: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx, ...]:
+        """Return tuple of holes (orbital indices) in the excitation from self -> sdet_j
+        >>> Spin_determinant_tuple((0, 2)).get_particles((0, 3))
+        (3,)
+        >>> Spin_determinant_tuple((0, 2)).get_particles((1, 3))
+        (1, 3)
+        >>> Spin_determinant_tuple((0, 2)).get_particles((0, 2))
+        ()
+        """
+        # Returned as |Spin_determinant_tuple|; same reasoning as above
+        return (self ^ sdet_j) & sdet_j
 
     def gen_all_connected_spindet(self, ed: int, n_orb: int) -> Iterator[Tuple[OrbitalIdx, ...]]:
         """Generate all connected spin determinants to self relative to a particular excitation degree
@@ -156,6 +253,29 @@ class Spin_determinant_bitstring(int):
         e.g., occupation of OrbitalIdx = 0 is given by rightmost bit
     Certain bitwise logical operators overloaded.
     """
+
+    # Define the function signature
+    cpp_lib.bitstring_XOR.argtypes = [ctypes.c_ulonglong, ctypes.c_ulonglong]
+    cpp_lib.bitstring_XOR.restype = ctypes.c_ulonglong
+    bitstring_XOR = cpp_lib.bitstring_XOR
+
+    cpp_lib.bitstring_AND.argtypes = [ctypes.c_ulonglong, ctypes.c_ulonglong]
+    cpp_lib.bitstring_AND.restype = ctypes.c_ulonglong
+    bitstring_AND = cpp_lib.bitstring_AND
+
+    cpp_lib.bitstring_OR.argtypes = [ctypes.c_ulonglong, ctypes.c_ulonglong]
+    cpp_lib.bitstring_OR.restype = ctypes.c_ulonglong
+    bitstring_OR = cpp_lib.bitstring_OR
+
+    cpp_lib.bitstring_POPCNT.argtypes = [ctypes.c_ulonglong]
+    cpp_lib.bitstring_POPCNT.restype = ctypes.c_ulonglong
+    bitstring_POPCNT = cpp_lib.bitstring_POPCNT
+
+    def occupied_orbitals(self) -> Iterator[OrbitalIdx]:
+        """Yield occupied orbital indices in this instance of spin determinant"""
+        for i, bit in enumerate(bin(self)[::-1][:-2]):
+            if bit == "1":
+                yield i
 
     def convert_repr(self, Norb=None):
         """Conver |Spin_determinant_bitstring| to |Spin_determinant_tuple| representation
@@ -212,11 +332,13 @@ class Spin_determinant_bitstring(int):
             # Operator overloaded function on first operand
             # In case that first argument is also |Spin_determinant bitstring|, convert to int
             # Else, infinite recursion
-            return Spin_determinant_bitstring(int(mask) & self)
+            return Spin_determinant_bitstring(Spin_determinant_bitstring.bitstring_AND(self, mask))
         elif isinstance(mask, tuple):
             # Create mask with bits in lh, lp set to 1
             bitstring_mask = self.create_bitmask(mask)
-            return Spin_determinant_bitstring(self & bitstring_mask)
+            return Spin_determinant_bitstring(
+                Spin_determinant_bitstring.bitstring_AND(self, bitstring_mask)
+            )
         else:
             raise TypeError(f"Unsupported operand type(s) for &: '{type(self)}' and '{type(mask)}'")
 
@@ -246,11 +368,13 @@ class Spin_determinant_bitstring(int):
             # Operator overloaded function on first operand
             # In case that first argument is also |Spin_determinant bitstring|, convert to int
             # Else, infinite recursion
-            return Spin_determinant_bitstring(int(mask) | self)
+            return Spin_determinant_bitstring(Spin_determinant_bitstring.bitstring_OR(self, mask))
         elif isinstance(mask, tuple):
             # Create mask with bits in lh, lp set to 1
             bitstring_mask = self.create_bitmask(mask)
-            return Spin_determinant_bitstring(self | bitstring_mask)
+            return Spin_determinant_bitstring(
+                Spin_determinant_bitstring.bitstring_OR(self, bitstring_mask)
+            )
         else:
             raise TypeError(f"Unsupported operand type(s) for |: '{type(self)}' and '{type(mask)}'")
 
@@ -280,15 +404,17 @@ class Spin_determinant_bitstring(int):
             # Operator overloaded function on first operand
             # In case that first argument is also |Spin_determinant bitstring|, convert to int
             # Else, infinite recursion
-            return Spin_determinant_bitstring(int(mask) ^ self)
+            return Spin_determinant_bitstring(Spin_determinant_bitstring.bitstring_XOR(self, mask))
         elif isinstance(mask, tuple):
             # Create mask with bits in lh, lp set to 1
             bitstring_mask = self.create_bitmask(mask)
-            return Spin_determinant_bitstring(self ^ bitstring_mask)
+            return Spin_determinant_bitstring(
+                Spin_determinant_bitstring.bitstring_XOR(self, bitstring_mask)
+            )
         else:
             raise TypeError(f"Unsupported operand type(s) for ^: '{type(self)}' and '{type(mask)}'")
 
-    def __sub__(self, spin_bs: int) -> int:
+    def __sub__(self, mask: int or tuple) -> Tuple[OrbitalIdx, ...]:
         """Overload `-` operator to perform logical bitwise comparison
         Remove common bits between `self` and `spin_bs` -> (self) & ~(spin_bs)
         >>> bin(Spin_determinant_bitstring(0b1010) - Spin_determinant_bitstring(0b0011))
@@ -298,9 +424,20 @@ class Spin_determinant_bitstring(int):
         >>> bin(Spin_determinant_bitstring(0b1010) - Spin_determinant_bitstring(0b0101))
         '0b1010'
         """
-        return Spin_determinant_bitstring(self & ~(spin_bs))
+        # TODO: Not using this anywhere atm, but keeping as member in case we find functionality for it
+        # Perform correct operation based on input
+        if isinstance(mask, int):
+            return Spin_determinant_bitstring(
+                Spin_determinant_bitstring.bitstring_AND(self, (~mask))
+            )
+        elif isinstance(mask, tuple):
+            # Create mask with bits in lh, lp set to 1
+            bitstring_mask = self.create_bitmask(mask)
+            return self - Spin_determinant_bitstring(bitstring_mask)
+        else:
+            raise TypeError(f"Unsupported operand type(s) for -: '{type(self)}' and '{type(mask)}'")
 
-    def __rsub__(self, mask: int or Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
+    def __rsub__(self, mask: int or Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx, ...]:
         """Reverse overloaded __sub__
         Convert arg `mask', then perform __sub__ since operation is not communative
         Take hole-particle mask as |tuple| or |int| and return |int|
@@ -313,6 +450,7 @@ class Spin_determinant_bitstring(int):
         >>> bin((0, 1, 2, 3) - Spin_determinant_bitstring(0b0101))
         '0b1010'
         """
+        # TODO: Not using this anywhere atm, but keeping as member in case we find functionality for it
         # Perform correct operation based on input
         if isinstance(mask, int):
             # Operator overloaded function on first operand
@@ -326,7 +464,49 @@ class Spin_determinant_bitstring(int):
 
     def popcnt(self) -> int:
         """Perform a `popcount'; number of bits set to True in self"""
-        return self.bit_count()
+        return Spin_determinant_bitstring.bitstring_POPCNT(self)
+
+    def get_holes(self, sdet_j) -> Tuple[OrbitalIdx, ...]:
+        """Return tuple of holes (orbital indices) in the excitation from self -> sdet_j
+        Takes another spin determinant (of type |int| or |tuple|) as arg
+        >>> Spin_determinant_bitstring(0b101).get_holes(0b1001)
+        (2,)
+        >>> Spin_determinant_bitstring(0b101).get_holes(0b1010)
+        (0, 2)
+        >>> Spin_determinant_bitstring(0b101).get_holes(0b101)
+        ()
+
+        >>> Spin_determinant_bitstring(0b101).get_holes((0, 3))
+        (2,)
+        >>> Spin_determinant_bitstring(0b101).get_holes((1, 3))
+        (0, 2)
+        >>> Spin_determinant_bitstring(0b101).get_holes((0, 2))
+        ()
+        """
+        # Perform appropriate logical operations, then return tuple of holes
+        # TODO: In C++, will update to Algorithm 2 in https://arxiv.org/pdf/1311.6244.pdf
+        return ((self ^ sdet_j) & self).convert_repr()
+
+    def get_particles(self, sdet_j) -> Tuple[OrbitalIdx, ...]:
+        """Return tuple of holes (orbital indices) in the excitation from self -> sdet_j
+        Takes another spin determinant (of type |int| or |tuple|) as arg
+        >>> Spin_determinant_bitstring(0b101).get_holes(0b1001)
+        (2,)
+        >>> Spin_determinant_bitstring(0b101).get_holes(0b1010)
+        (0, 2)
+        >>> Spin_determinant_bitstring(0b101).get_holes(0b101)
+        ()
+
+        >>> Spin_determinant_bitstring(0b101).get_holes((0, 3))
+        (2,)
+        >>> Spin_determinant_bitstring(0b101).get_holes((1, 3))
+        (0, 2)
+        >>> Spin_determinant_bitstring(0b101).get_holes((0, 2))
+        ()
+        """
+        # Perform appropriate logical operations, then return tuple of particles
+        # TODO: In C++, will update to Algorithm 3 in https://arxiv.org/pdf/1311.6244.pdf
+        return ((self ^ sdet_j) & sdet_j).convert_repr()
 
     def gen_all_connected_spindet(self, ed: int, n_orb: int) -> Iterator[Tuple[OrbitalIdx, ...]]:
         """Generate all connected spin determinants to self relative to a particular excitation degree
@@ -373,6 +553,11 @@ class Spin_determinant_bitstring(int):
         return [self ^ tuple(sorted(set(h) | set(p))) for h, p in l_hp_pairs]
 
 
+# Added class for Exc_degree so that we dont need to call the C++ function twice
+class ExcDegreeResult(ctypes.Structure):
+    _fields_ = [("ed_up", ctypes.c_int), ("ed_dn", ctypes.c_int)]
+
+
 #   ______     _                      _                   _
 #   |  _  \   | |                    (_)                 | |
 #   | | | |___| |_ ___ _ __ _ __ ___  _ _ __   __ _ _ __ | |_
@@ -392,11 +577,49 @@ class Determinant(tuple):
 
     _fields = ("alpha", "beta")
 
+    # Rename functions
+    exc_dg_bitstring = cpp_lib.exc_degree_bitstring
+    exc_dg_tuple = cpp_lib.exc_degree_tuple
+    apply_excitation_tuple = cpp_lib.apply_excitation_tuple
+    # Define argument types for tuple and bitstring exc_degree
+    exc_dg_bitstring.argtypes = [
+        ctypes.c_uint64,
+        ctypes.c_uint64,
+        ctypes.c_uint64,
+        ctypes.c_uint64,
+    ]
+
+    exc_dg_tuple.argtypes = [
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_int),
+    ]
+
+    apply_excitation_tuple.argtypes = [
+        np.ctypeslib.ndpointer(dtype=np.intc),
+        ctypes.c_int,
+        np.ctypeslib.ndpointer(dtype=np.intc),
+        ctypes.c_int,
+        np.ctypeslib.ndpointer(dtype=np.intc),
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),
+    ]
+
+    # Define the return types for tuple and bitstring exc_degree
+    exc_dg_bitstring.restype = ExcDegreeResult
+    exc_dg_tuple.restype = ExcDegreeResult
+    apply_excitation_tuple.restype = None
+
+    # TODO: Add extra param for spin_det type
+
     def __new__(_cls, *args, **kwargs):
         """Create new |Determinant| instance
         If type of alpha, beta are |int| -> Return as is
-        '                        ' |tuple| -> Convert to |Spin_determinant_tuple|, then return"""
-
+        '                        ' |tuple| -> Convert to |Spin_determinant_tuple|, then return
+        """
         # Can either...
         #   Pass arguments in alpha, beta order as unnamed objects; e.g., Determinant(alpha_sdet, beta_sdet)
         if len(args) > 0:
@@ -481,6 +704,18 @@ class Determinant(tuple):
         # Each spin determinant class has member `convert_repr` function
         return Determinant(self.alpha.convert_repr(Norb), self.beta.convert_repr(Norb))
 
+    def spindet_indices(self, spin: str) -> Iterator[OrbitalIdx]:
+        """Produce indices of occupied spin-orbital indices in getattr(self, spin)
+        >>> tuple(i for i in Determinant((0, 2), (1,)).spindet_indices("alpha"))
+        (0, 2)
+        >>> tuple(i for i in Determinant(0b0101, 0b0001).spindet_indices("alpha"))
+        (0, 2)
+        >>> tuple(i for i in Determinant((0, 2), ()).spindet_indices("beta"))
+        ()
+        """
+        for i in getattr(self, spin).occupied_orbitals():
+            yield i
+
     #     _
     #    |_     _ o _|_  _. _|_ o  _  ._
     #    |_ >< (_ |  |_ (_|  |_ | (_) | |
@@ -513,15 +748,81 @@ class Determinant(tuple):
         >>> Determinant(0b11, 0b11).apply_excitation(((1,), (2,)), ((), ()))
         Determinant(alpha=5, beta=3)
         """
+
         # Unpack alpha, beta holes
         lh_a, lp_a = alpha_exc
         lh_b, lp_b = beta_exc
 
-        excited_sdet_a = self.alpha ^ (tuple(sorted(set(lh_a) | set(lp_a))))
-        excited_sdet_b = self.beta ^ (tuple(sorted(set(lh_b) | set(lp_b))))
-        return Determinant(excited_sdet_a, excited_sdet_b)
+        if isinstance(self.alpha, tuple) and isinstance(self.beta, tuple):
+            # Call C++ for alpha
+            # pointer for size of the result
+            size_res_a = ctypes.c_int()
+            # memory for the returned tuple
+            mem_alpha = ctypes.POINTER(ctypes.c_int)()
+            # convert the tuples into numpy arrays
+            self_a_arr, lh_a_arr, lp_a_arr = (
+                np.array(sorted(self.alpha), dtype=np.intc),
+                np.array(sorted(lh_a), dtype=np.intc),
+                np.array(sorted(lp_a), dtype=np.intc),
+            )
+            # get the size of the numpy arrays
+            size_self_a, size_lh_a, size_lp_a = (
+                len(self_a_arr),
+                len(lh_a_arr),
+                len(lp_a_arr),
+            )
+            # Call the apply_excitation_tuple from C++
+            Determinant.apply_excitation_tuple(
+                self_a_arr,
+                size_self_a,
+                lh_a_arr,
+                size_lh_a,
+                lp_a_arr,
+                size_lp_a,
+                ctypes.byref(size_res_a),
+                ctypes.byref(mem_alpha),
+            )
+            # Call C++ for beta
+            # pointer for size of the result
+            size_res_b = ctypes.c_int()
+            # memory for the returned tuple
+            mem_beta = ctypes.POINTER(ctypes.c_int)()
+            # convert the tuples into numpy arrays
+            self_b_arr, lh_b_arr, lp_b_arr = (
+                np.array(sorted(self.beta), dtype=np.intc),
+                np.array(sorted(lh_b), dtype=np.intc),
+                np.array(sorted(lp_b), dtype=np.intc),
+            )
+            # get the size of the numpy arrays
+            size_self_b, size_lh_b, size_lp_b = (
+                len(self_b_arr),
+                len(lh_b_arr),
+                len(lp_b_arr),
+            )
+            # Call the apply_excitation_tuple from C++
+            Determinant.apply_excitation_tuple(
+                self_b_arr,
+                size_self_b,
+                lh_b_arr,
+                size_lh_b,
+                lp_b_arr,
+                size_lp_b,
+                ctypes.byref(size_res_b),
+                ctypes.byref(mem_beta),
+            )
+            return Determinant(
+                tuple([mem_alpha[i] for i in range(size_res_a.value)]),
+                tuple([mem_beta[i] for i in range(size_res_b.value)]),
+            )
+            # TODO these tuples ^^^^ may need to be sorted
+        else:
+            # IF its bitstring just do the normal operations in python
+            excited_sdet_a = self.alpha ^ (tuple(sorted(set(lh_a) | set(lp_a))))
+            excited_sdet_b = self.beta ^ (tuple(sorted(set(lh_b) | set(lp_b))))
+            return Determinant(excited_sdet_a, excited_sdet_b)
 
     def exc_degree(self, det_J: NamedTuple) -> Tuple[int, int]:
+        # Exc is the function from cpp that was loaded into drivers.py
         """Compute excitation degree; the number of orbitals which differ between two |Determinants| self, det_J
 
         >>> Determinant((0, 1), (0, 1)).exc_degree(Determinant(alpha=(0, 2), beta=(4, 6)))
@@ -533,9 +834,31 @@ class Determinant(tuple):
         >>> Determinant(0b11, 0b11).exc_degree(Determinant(0b11, 0b101000))
         (0, 2)
         """
-        ed_up = (self.alpha ^ det_J.alpha).popcnt() // 2
-        ed_dn = (self.beta ^ det_J.beta).popcnt() // 2
-        return (ed_up, ed_dn)
+
+        if isinstance(self.alpha, tuple):
+            # If its a tuple
+
+            # pack the length of all of the tuples into a single tuple to be sent to C++
+            sizes_of_tuples = (len(self.alpha), len(self.beta), len(det_J.alpha), len(det_J.beta))
+
+            """
+            (ctypes.c_int * len(self.alpha))(*self.alpha) converts the tuple into a ctypes array to be sent
+            """
+            # call the C++ function
+            result = Determinant.exc_dg_tuple(
+                (ctypes.c_int * len(self.alpha))(*self.alpha),
+                (ctypes.c_int * len(self.beta))(*self.beta),
+                (ctypes.c_int * len(det_J.alpha))(*det_J.alpha),
+                (ctypes.c_int * len(det_J.beta))(*det_J.beta),
+                (ctypes.c_int * len(sizes_of_tuples))(*sizes_of_tuples),
+            )
+            return result.ed_up, result.ed_dn
+        else:
+            # If its a bitstring
+
+            # Call the C++ function
+            result = Determinant.exc_dg_bitstring(self.alpha, self.beta, det_J.alpha, det_J.beta)
+            return result.ed_up, result.ed_dn
 
     def is_connected(self, det_j) -> Tuple[int, int]:
         """Compute the excitation degree, the number of orbitals which differ between the two determinants.
@@ -627,7 +950,6 @@ class Determinant(tuple):
             else:
                 # det_a is beta spindet
                 excited_det = self.apply_excitation(((), ()), ((h,), (p,)))
-            assert getattr(excited_det, spin)[-3:] == constraint
             yield excited_det
 
         # Generate opposite-spin excitations
@@ -639,7 +961,6 @@ class Determinant(tuple):
                 # det_b is alpha spindet
                 excited_det = self.apply_excitation(((h,), (p,)), ((), ()))
             # TODO: Assertion for bitstring? Shouldn't need though
-            assert getattr(excited_det, spin)[-3:] == constraint
             yield excited_det
 
     def triplet_constrained_double_excitations_from_det(
@@ -660,7 +981,6 @@ class Determinant(tuple):
             else:
                 # det_a is beta spindet
                 excited_det = self.apply_excitation(((), ()), (holes, particles))
-            assert getattr(excited_det, spin)[-3:] == constraint
             yield excited_det
 
         # Same-spin doubles, for opposite-spin to `spin`
@@ -671,7 +991,6 @@ class Determinant(tuple):
             else:
                 # det_b is alpha spindet
                 excited_det = self.apply_excitation((holes, particles), ((), ()))
-            assert getattr(excited_det, spin)[-3:] == constraint
             yield excited_det
 
         # Opposite-spin doubles
@@ -684,7 +1003,6 @@ class Determinant(tuple):
             else:
                 # det_a is beta, det_b is beta
                 excited_det = self.apply_excitation(((hb,), (pb,)), ((ha,), (pa,)))
-            assert getattr(excited_det, spin)[-3:] == constraint
             yield excited_det
 
     def get_holes_particles_for_constrained_singles(
@@ -722,48 +1040,59 @@ class Determinant(tuple):
         # Some things can be pre-computed:
         #   Which of the `constraint` (spin) orbitals {a1, a2, a3} are occupied in |D_a>? (If any)
         constraint_orbitals_occupied = det_a & constraint
+        if isinstance(constraint_orbitals_occupied, int):
+            # If using bitstrings, convert this to a tuple
+            constraint_orbitals_occupied = constraint_orbitals_occupied.convert_repr()
+
         #   Which `higher-order` (spin) orbitals o >= a1 that are not {a1, a2, a3} are occupied in |D_a>? (If any)
         #   TODO: Different from Tubman paper, which has an error if I reada it correctly
-        nonconstrained_orbitals_occupied = (det_a & B) - constraint
+        #   Equivalent to `det_a & B - constraint` in set operations
+        nonconstrained_orbitals_occupied = (det_a & B).get_holes(constraint)
 
         # If no double excitation of |D> will produce |J> satisfying constraint
-        if len(constraint_orbitals_occupied) == 1 or len(nonconstrained_orbitals_occupied) > 1:
+        if (
+            constraint_orbitals_occupied.popcnt() == 1
+            or nonconstrained_orbitals_occupied.popcnt() > 1
+        ):
             # No single excitations generated by the inputted |Determinant|: {det} satisfy given constraint: {constraint}
             # These are empty lists
             return (ha, pa, hb, pb)
 
         # Create list of possible `particles` s.to constraint
-        if len(constraint_orbitals_occupied) == 2:
+        if constraint_orbitals_occupied.popcnt() == 2:
             # (Two constraint orbitals occupied) e.g., a1, a2 \in |D_a> -> A single (a) x_a \in ha to a_unocc is necessary to satisfy the constraint
             # A single (b) will still not satisfy constraint
-            (a_unocc,) = (
-                (det_a | constraint) - (det_a & constraint)
-            ) & constraint  # The 1 unoccupied constraint orbital
+            # Operation equivalent to `(det_a ^ constraint) & constraint `
+            (a_unocc,) = det_a.get_particles(constraint)  # The 1 unoccupied constraint orbital
             pa.append(a_unocc)
-        elif len(constraint_orbitals_occupied) == 3:
+
+        elif constraint_orbitals_occupied.popcnt() == 3:
             # a1, a2, a3 \in |D_a> -> |D> satisfies constraint! ->
             #   Any single x_a \in ha to w_a where w_a < a1 will satisfy constraint
-            det_unocc_a_orbs = all_orbs - det_a
+            # Operation below is equivalent to all_orbs - det_al; get orbs that are unoccupied in alpha spindet
+            det_unocc_a_orbs = det_a.get_particles(all_orbs)
             for w_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
                 pa.append(w_a)
             #   Any single x_b \in hb to w_b
-            det_unocc_b_orbs = all_orbs - det_b
+            # Operation below is equivalent to all_orbs - det_b; get orbs that are unoccupied in beta spindet
+            det_unocc_b_orbs = det_b.get_particles(all_orbs)
             for w_b in det_unocc_b_orbs:
                 pb.append(w_b)
 
         # Create list of possible `holes` s.to constraint
-        if len(nonconstrained_orbitals_occupied) == 1:
+        if nonconstrained_orbitals_occupied.popcnt() == 1:
             # x_a > a1 \in |D_a> with x_a \not\in {a1, a2, a3} -> A single (a) x_a to w_a \in pa is necessary to satisfy constraint
             # A single (b) will not satisfy
             (x_a,) = nonconstrained_orbitals_occupied  # Has length 1; unpack
             ha.append(x_a)
-        elif len(nonconstrained_orbitals_occupied) == 0:
+
+        elif nonconstrained_orbitals_occupied.popcnt() == 0:
             # No `higher` orbitals \not\in {a1, a2, a3} occupied in |D> ->
             #   A single (a) x_a to w_a \in pa, where x_a < a1 (so as not to ruin constraint)
-            for x_a in takewhile(lambda x: x < a1, det_a):
+            for x_a in takewhile(lambda x: x < a1, tuple(det_a.occupied_orbitals())):
                 ha.append(x_a)
             #   A single (b) x_b to w_b \in pb
-            for x_b in det_b:
+            for x_b in tuple(det_b.occupied_orbitals()):
                 hb.append(x_b)
 
         return (ha, pa, hb, pb)
@@ -816,9 +1145,14 @@ class Determinant(tuple):
         # Some things can be pre-computed:
         #   Which of the `constraint` (spin) orbitals {a1, a2, a3} are occupied in |D>? (If any)
         constraint_orbitals_occupied = det_a & constraint
+        if isinstance(constraint_orbitals_occupied, int):
+            # If using bitstrings, convert this to a tuple
+            constraint_orbitals_occupied = constraint_orbitals_occupied.convert_repr()
+
         #   Which `higher-order`(spin) orbitals o >= a1 that are not {a1, a2, a3} are occupied in |D>? (If any)
         #   TODO: Different from Tubman paper, which has an error if I read it correctly...
-        nonconstrained_orbitals_occupied = (det_a & B) - constraint
+        #   Equivalent to `det_a & B - constraint` in set operations
+        nonconstrained_orbitals_occupied = (det_a & B).get_holes(constraint)
 
         # If this -> no double excitation of |D> will produce |J> satisfying constraint |T>
         if len(constraint_orbitals_occupied) == 0 or len(nonconstrained_orbitals_occupied) > 2:
@@ -831,7 +1165,8 @@ class Determinant(tuple):
             # (One constraint orbital occupied) e.g., a1 \in |D_a> -> A same-spin (aa) double to (x_a, y_a) \in haa to (a2, a3) is necessary
             # No same-spin (bb) or opposite-spin (ab) excitations will satisfy constraint
             # New particles -> a2, a3
-            a_unocc_1, a_unocc_2 = ((det_a | constraint) - (det_a & constraint)) & (
+            # Operation equivalent to `(det_a ^ constraint) & constraint `
+            a_unocc_1, a_unocc_2 = det_a.get_particles(
                 constraint
             )  # This set will have length 2; unpack
             paa.append((a_unocc_1, a_unocc_2))
@@ -839,28 +1174,31 @@ class Determinant(tuple):
         elif len(constraint_orbitals_occupied) == 2:
             # (Two constraint orbitals occupied) e.g., a1, a2 \in |D_a> ->
             #   A same-spin (aa) double (x_a, y_a) \in haa to (z_a, a_unocc), where z_a\not\in|D_a>, and z_a < a1 (if excited to z_a > a1, constraint ruined!)
-            (a_unocc,) = (
-                (det_a | constraint) - (det_a & constraint)
-            ) & constraint  # The 1 unoccupied constraint orbital
-            det_unocc_a_orbs = all_orbs - det_a  # Unocc orbitals in |D_a>
+            # Operation equivalent to `(det_a ^ constraint) & constraint `
+            (a_unocc,) = det_a.get_particles(constraint)  # The 1 unoccupied constraint orbital
+            # Operation below is equivalent to `all_orbs - det_a`
+            det_unocc_a_orbs = det_a.get_particles(all_orbs)  # Unocc orbitals in |D_a>
             for z_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
                 # z < a_unocc trivially, no need to check they are distinct
                 paa.append((z_a, a_unocc))
             #   No same spin (bb) excitations will satisfy constraint
             #   An oppopsite spin (ab) double (x_a, y_b) \in \hab to (a_unocc, z_b), where z\not\in|D_b>
-            det_unocc_b_orbs = all_orbs - det_b  # Unocc orbitals in |D_b>
+            # Operations below is equivalent to `all_orbs - det_b`
+            det_unocc_b_orbs = det_b.get_particles(all_orbs)  # Unocc orbitals in |D_b>
             for z_b in det_unocc_b_orbs:
                 pab.append((a_unocc, z_b))
 
         elif len(constraint_orbitals_occupied) == 3:
             # a1, a2, a3 \in |D_a> -> |D> satisfies constraint! ->
             #   Any same-spin (aa) double (x_a, y_a) \in haa to (w_a, z_a), where w_a, z_a < a1
-            det_unocc_a_orbs = all_orbs - det_a
+            # Operations below is equivalent to `all_orbs - det_a`
+            det_unocc_a_orbs = det_a.get_particles(all_orbs)
             for w_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
                 for z_a in takewhile(lambda z: z < w_a, det_unocc_a_orbs):
                     paa.append((w_a, z_a))
             # Any same-spin (bb) double (x_b, y_b) \in hbb to (w_b, z_b)
-            det_unocc_b_orbs = all_orbs - det_b  # Unocc orbitals in |D_a>
+            # Operations below is equivalent to `all_orbs - det_b`
+            det_unocc_b_orbs = det_b.get_particles(all_orbs)  # Unocc orbitals in |D_b>
             for w_b in det_unocc_b_orbs:
                 for z_b in takewhile(lambda x: x < w_b, det_unocc_b_orbs):
                     pbb.append((w_b, z_b))
@@ -874,33 +1212,38 @@ class Determinant(tuple):
             # x_a, y_a \in |D_a> with x_a, y_a > a1 and \not\in {a1, a2, a3} -> A same-spin (aa) double (x_a, y_a) to (w_a, z_a) \in paa is necessary
             # No same-spin (bb) or opposite-spin (ab) excitations will satisfy constraint
             # New holes -> x, y
-            x_a, y_a = nonconstrained_orbitals_occupied  # This set will have length 2; unpack
+            (
+                x_a,
+                y_a,
+            ) = nonconstrained_orbitals_occupied  # This set will have length 2; unpack
             haa.append((x_a, y_a))
+
         elif len(nonconstrained_orbitals_occupied) == 1:
             # x_a > a1 \in |D_a> with x_a \not\in {a1, a2, a3} ->
             #   A same-spin (aa) double (x_a, y_a) to (w_a, z_a) \in paa, where y_a < a1 (exciting y_a < a1 doesn't remove constraint)
             (x_a,) = nonconstrained_orbitals_occupied  # Has length 1; unpack
-            for y_a in takewhile(lambda x: x < a1, det_a):
+            for y_a in takewhile(lambda x: x < a1, tuple(det_a.occupied_orbitals())):
                 if x_a != y_a:
                     haa.append((x_a, y_a))
             #   A same-spin (bb) double will not satisfy the constraint
             #   A opposite-spin (ab) double (x_a, y_b) -> (w_a, z_b) \in pab where y_b \in |D_b>
-            for y_b in det_b:
+            for y_b in tuple(det_b.occupied_orbitals()):
                 hab.append((x_a, y_b))
 
         elif len(nonconstrained_orbitals_occupied) == 0:
             # No `higher` orbitals \not\in {a1, a2, a3} occupied in |D> ->
             #   A same-spin (aa) double (x_a, y_a) to (w_a, z_a) \in paa, where x_a, y_a < a1
-            for x_a in takewhile(lambda x: x < a1, det_a):
-                for y_a in takewhile(lambda y: y < x_a, det_a):
+            # Below, we cast det_a, det_b to tuples in case we are using the bitstring representation
+            for x_a in takewhile(lambda x: x < a1, tuple(det_a.occupied_orbitals())):
+                for y_a in takewhile(lambda y: y < x_a, tuple(det_a.occupied_orbitals())):
                     haa.append((x_a, y_a))
             #   A same-spin (bb) double (x_b, y_b) to (w_b, z_b) \in pbb
-            for x_b in det_b:
-                for y_b in takewhile(lambda x: x < x_b, det_b):
+            for x_b in tuple(det_b.occupied_orbitals()):
+                for y_b in takewhile(lambda x: x < x_b, tuple(det_b.occupied_orbitals())):
                     hbb.append((x_b, y_b))
             #   A opposite-spin (ab) double (x_a, y_b) to (w_a, z_b) \in pab, where x_a < a1
-            for x_a in takewhile(lambda x: x < a1, det_a):
-                for y_b in det_b:
+            for x_a in takewhile(lambda x: x < a1, tuple(det_a.occupied_orbitals())):
+                for y_b in tuple(det_b.occupied_orbitals()):
                     hab.append((x_a, y_b))
 
         return (haa, paa, hbb, pbb, hab, pab)
@@ -915,6 +1258,28 @@ class Determinant(tuple):
     # Driver functions for computing phase, hole and particle between determinant pairs
     # TODO: These are ONLY implemented for |Spin_determinant_tuple| at the moment;
     # So, might just keep as is
+
+    def get_holes_particles_in_exc(
+        self, det_j
+    ) -> Tuple[Dict[str, OrbitalIdx], Dict[str, OrbitalIdx]]:
+        """Return holes, particles involved in an excitation between self and det of type |Determinant|
+        Assume excitation is from self -> det_j
+        >>> Determinant((0, 1), (0, 1)).get_holes_particles_in_exc(Determinant((2, 3), (0, 4)))
+        (defaultdict(<class 'set'>, {'alpha': {0, 1}, 'beta': {1}}),
+         defaultdict(<class 'set'>, {'alpha': {2, 3}, 'beta': {4}}))
+        """
+
+        d_holes, d_parts = defaultdict(set), defaultdict(set)
+        for spin in ("alpha", "beta"):
+            sdet_i, sdet_j = getattr(self, spin), getattr(det_j, spin)
+            holes = (sdet_i ^ sdet_j) & sdet_i
+            parts = (sdet_i ^ sdet_j) & sdet_j
+            for h in holes:
+                d_holes[spin].add(h)
+            for p in parts:
+                d_parts[spin].add(p)
+
+        return (d_holes, d_parts)
 
     def single_phase(
         self,
@@ -997,8 +1362,8 @@ class Determinant(tuple):
         """
         # Get holes, particle in exc
         sdet_i = getattr(self, spin)
-        (h,) = sdet_i - sdet_j
-        (p,) = sdet_j - sdet_i
+        (h,) = sdet_i.get_holes(sdet_j)
+        (p,) = sdet_i.get_particles(sdet_j)
 
         return self.single_phase(h, p, spin), h, p
 
@@ -1016,9 +1381,9 @@ class Determinant(tuple):
         """
         sdet_i = getattr(self, spin)
         # Holes
-        h1, h2 = sorted(sdet_i - sdet_j)
+        h1, h2 = sorted(sdet_i.get_holes(sdet_j))
         # Particles
-        p1, p2 = sorted(sdet_j - sdet_i)
+        p1, p2 = sorted(sdet_i.get_particles(sdet_j))
 
         return self.double_phase((h1, h2), (p1, p2), spin), h1, h2, p1, p2
 

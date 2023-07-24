@@ -30,7 +30,8 @@ from qe.io import load_eref, load_integrals, load_wf
 from collections import defaultdict
 from itertools import product, chain
 from functools import cached_property
-from qe.fundamental_types import Determinant
+from qe.fundamental_types import Determinant, Two_electron_integral_index_phase, OrbitalIdx
+from typing import Iterator, Tuple
 from mpi4py import MPI
 
 
@@ -764,13 +765,6 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             ):
                 indices.append(((a, b), (i, j, k, l), phase))
         indices = self.simplify_indices(indices)
-        for i in range(len(indices)):
-            (I_int, J_int), idx4_int, phase_int = indices[i]  # Unpack
-            (I_det, J_det), idx4_det, phase_det = self.reference_indices_by_category["G"][i]
-            if phase_int != phase_det:
-                print(
-                    f"Int: {psi[I_int], psi[J_int]}, {compound_idx4_reverse(idx4_int)}, {phase_int}, Det: {psi[I_det], psi[J_det]}, {compound_idx4_reverse(idx4_det)}, {phase_det}"
-                )
         self.assertListEqual(indices, self.reference_indices_by_category["G"])
 
     def test_category_G_PT2(self):
@@ -855,11 +849,11 @@ class Test_VariationalPowerplant:
         self.assertAlmostEqual(E_ref, E, places=6)
 
 
-def load_and_compute(fcidump_path, wf_path, driven_by):
+def load_and_compute(fcidump_path, wf_path, driven_by, det_representation="tuple"):
     # Load integrals
     n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
     # Load wave function
-    psi_coef, psi_det = load_wf(f"data/{wf_path}")
+    psi_coef, psi_det = load_wf(f"data/{wf_path}", det_representation)
     # Computation of the Energy of the input wave function (variational energy)
     comm = MPI.COMM_WORLD
     lewis = Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, driven_by)
@@ -874,6 +868,20 @@ class Test_VariationalPowerplant_Determinant(Timing, unittest.TestCase, Test_Var
 class Test_VariationalPowerplant_Integral(Timing, unittest.TestCase, Test_VariationalPowerplant):
     def load_and_compute(self, fcidump_path, wf_path):
         return load_and_compute(fcidump_path, wf_path, "integral")
+
+
+class Test_VariationalPowerplant_Determinant_Bitstrings(
+    Timing, unittest.TestCase, Test_VariationalPowerplant
+):
+    def load_and_compute(self, fcidump_path, wf_path):
+        return load_and_compute(fcidump_path, wf_path, "determinant", "bitstring")
+
+
+class Test_VariationalPowerplant_Integral_Bitstrings(
+    Timing, unittest.TestCase, Test_VariationalPowerplant
+):
+    def load_and_compute(self, fcidump_path, wf_path):
+        return load_and_compute(fcidump_path, wf_path, "integral", "bitstring")
 
 
 class Test_VariationalPT2Powerplant:
@@ -906,11 +914,11 @@ class Test_VariationalPT2Powerplant:
         self.assertAlmostEqual(E_ref, E, places=6)
 
 
-def load_and_compute_pt2(fcidump_path, wf_path, driven_by):
+def load_and_compute_pt2(fcidump_path, wf_path, driven_by, det_representation="tuple"):
     # Load integrals
-    n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+    _, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
     # Load wave function
-    psi_coef, psi_det = load_wf(f"data/{wf_path}")
+    psi_coef, psi_det = load_wf(f"data/{wf_path}", det_representation)
     # Computation of the Energy of the input wave function (variational energy)
     comm = MPI.COMM_WORLD
     lewis = Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, driven_by)
@@ -927,19 +935,21 @@ class Test_VariationalPT2_Integral(Timing, unittest.TestCase, Test_VariationalPT
         return load_and_compute_pt2(fcidump_path, wf_path, "integral")
 
 
-class Test_Selection(Timing, unittest.TestCase):
-    def load(self, fcidump_path, wf_path):
-        # Load integrals
-        n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
-        # Load wave function
-        psi_coef, psi_det = load_wf(f"data/{wf_path}")
-        return (
-            n_ord,
-            psi_coef,
-            psi_det,
-            Hamiltonian_generator(MPI.COMM_WORLD, E0, d_one_e_integral, d_two_e_integral, psi_det),
-        )
+class Test_VariationalPT2_Determinant_Bitstrings(
+    Timing, unittest.TestCase, Test_VariationalPT2Powerplant
+):
+    def load_and_compute_pt2(self, fcidump_path, wf_path):
+        return load_and_compute_pt2(fcidump_path, wf_path, "determinant", "bitstring")
 
+
+class Test_VariationalPT2_Integral_Bitstrings(
+    Timing, unittest.TestCase, Test_VariationalPT2Powerplant
+):
+    def load_and_compute_pt2(self, fcidump_path, wf_path):
+        return load_and_compute_pt2(fcidump_path, wf_path, "integral", "bitstring")
+
+
+class Test_Selection:
     def test_f2_631g_1p0det(self):
         # Verify that selecting 0 determinant is egual that computing the variational energy
         fcidump_path = "f2_631g.FCIDUMP"
@@ -983,6 +993,29 @@ class Test_Selection(Timing, unittest.TestCase):
         )
 
         self.assertAlmostEqual(E_ref, E, places=6)
+
+
+def load(fcidump_path, wf_path, representation="tuple"):
+    # Load integrals
+    n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+    # Load wave function
+    psi_coef, psi_det = load_wf(f"data/{wf_path}", representation)
+    return (
+        n_ord,
+        psi_coef,
+        psi_det,
+        Hamiltonian_generator(MPI.COMM_WORLD, E0, d_one_e_integral, d_two_e_integral, psi_det),
+    )
+
+
+class Test_Selection_Tuple(Timing, unittest.TestCase, Test_Selection):
+    def load(self, fcidump_path, wf_path):
+        return load(fcidump_path, wf_path)
+
+
+class Test_Selection_Bitstring(Timing, unittest.TestCase, Test_Selection):
+    def load(self, fcidump_path, wf_path):
+        return load(fcidump_path, wf_path, "bitstring")
 
 
 if __name__ == "__main__":
