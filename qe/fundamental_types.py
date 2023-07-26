@@ -22,6 +22,221 @@ One_electron_integral = Dict[Tuple[OrbitalIdx, OrbitalIdx], float]
 cpp_lib = ctypes.CDLL("./qe/bitstring_ops.so")
 
 
+import qelib
+
+class Spin_determinant_vector:
+    def __init__(self, t: Tuple[OrbitalIdx, ...]):
+        self.tag = qelib.SPIN_DET_TYPE_VECTOR
+        npa = np.array(sorted(t), dtype=np.intc)
+        npa_size = len(t)
+        self.handle = qelib.qe_spin_det_vector_create(npa, npa_size)
+
+    def get_iterator(self):
+        return qelib.qe_spin_det_vector_begin(self.handle)
+
+    def occupied_orbitals(self) -> Iterator[OrbitalIdx]:
+        """Yield occupied orbital indices in this instance of spin determinant"""
+        it = self.get_iterator()
+        for i in qelib.qe_spin_det_vector_next(self.handle, it):
+            yield i
+
+    def __and__(self, right: Spin_determinant_vector) -> Spin_determinant_vector:
+        """Overload `&` operator to perform set intersection
+        Return type |Spin_determinant_tuple|
+        >>> Spin_determinant_tuple((0, 1)) & Spin_determinant_tuple((0, 2))
+        (0,)
+        >>> Spin_determinant_tuple((0, 1)) & Spin_determinant_tuple((2, 3))
+        ()
+        >>> Spin_determinant_tuple((0, 2, 3)) & Spin_determinant_tuple((2, 3))
+        (2, 3)
+        """
+        ret = Spin_determinant_vector()
+        qelib.qe_spin_det_vector_and(self.handle, right.handle, ret.handle)
+        return ret
+
+    def __rand__(self, right) -> Spin_determinant_vector:
+        """Reverse overloaded __and__
+        >>> (0, 1) & Spin_determinant_tuple((0, 2))
+        (0,)
+        >>> Spin_determinant_tuple((0, 1)) & Spin_determinant_tuple((0, 2))
+        (0,)
+        """
+        return self.__and__(right)
+
+    def __or__(self, right) -> Spin_determinant_vector:
+        """Overload `|` operator to perform set union
+        Return type |Spin_determinant_tuple|
+        >>> Spin_determinant_tuple((0, 1)) | Spin_determinant_tuple((0, 2))
+        (0, 1, 2)
+        >>> Spin_determinant_tuple((0, 1)) | Spin_determinant_tuple((0, 1))
+        (0, 1)
+        >>> Spin_determinant_tuple((0, 1)) | Spin_determinant_tuple((2, 3))
+        (0, 1, 2, 3)
+        """
+        ret = Spin_determinant_vector()
+        qelib.qe_spin_det_vector_or(self.handle, right.handle, ret.handle)
+        return ret
+
+    def __ror__(self, right) -> Spin_determinant_vector:
+        """Reverse overloaded __or__
+        >>> (0, 1) | Spin_determinant_tuple((0, 2))
+        (0, 1, 2)
+        """
+        return self.__or__(right)
+
+    def __xor__(self, right) -> Spin_determinant_vector:
+        """Overload `^` operator to perform symmetric set difference
+        Return type |Spin_determinant_tuple|
+        >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((0, 2))
+        (1, 2)
+        >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((0, 1))
+        ()
+        >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((2, 3))
+        (0, 1, 2, 3)
+        """
+        ret = Spin_determinant_vector()
+        qelib.qe_spin_det_vector_xor(self.handle, right.handle, ret.handle)
+        return ret
+
+    def __rxor__(self, right) -> Spin_determinant_vector:
+        """Reverse overloaded __xor__
+        >>> (0, 1) ^  Spin_determinant_tuple((0, 2))
+        (1, 2)
+        """
+        return self.__xor__(right)
+
+    def popcnt(self) -> int:
+        """Perform a `popcount'; return length of the tuple
+        >>> Spin_determinant_tuple((0, 2, 3)).popcnt()
+        3
+        """
+        return qelib.qe_spin_det_vector_popcount(self.handle)
+
+    def get_holes(self, sdet_j: Spin_determinant_vector) -> Spin_determinant_vector:
+        """Return tuple of holes (orbital indices) in the excitation from self -> sdet_j
+        >>> Spin_determinant_tuple((0, 2)).get_holes((0, 3))
+        (2,)
+        >>> Spin_determinant_tuple((0, 2)).get_holes((1, 3))
+        (0, 2)
+        >>> Spin_determinant_tuple((0, 2)).get_holes((0, 2))
+        ()
+        """
+        # TODO: These are returned as |Spin_determinant_tuple|; necessary, because we want to abstract over `popcnt()`
+        # Will compute number of holes in certain applications... E.g., in constrained excitations. So want the returned |tuple| to have that member function
+        return (self ^ sdet_j) & self
+
+    def get_particles(self, sdet_j: Spin_determinant_vector) -> Spin_determinant_vector:
+        """Return tuple of holes (orbital indices) in the excitation from self -> sdet_j
+        >>> Spin_determinant_tuple((0, 2)).get_particles((0, 3))
+        (3,)
+        >>> Spin_determinant_tuple((0, 2)).get_particles((1, 3))
+        (1, 3)
+        >>> Spin_determinant_tuple((0, 2)).get_particles((0, 2))
+        ()
+        """
+        # Returned as |Spin_determinant_tuple|; same reasoning as above
+        return (self ^ sdet_j) & sdet_j
+
+    def gen_all_connected_spindet(self, ed: int, n_orb: int) -> Iterator[Tuple[OrbitalIdx, ...]]:
+        """Generate all connected spin determinants to self relative to a particular excitation degree
+        :param n_orb: global parameter
+        >>> sorted(Spin_determinant_tuple((0, 1)).gen_all_connected_spindet(1, 4))
+        [(0, 2), (0, 3), (1, 2), (1, 3)]
+        >>> sorted(Spin_determinant_tuple((0, 1)).gen_all_connected_spindet(2, 4))
+        [(2, 3)]
+        >>> sorted(Spin_determinant_tuple((0, 1)).gen_all_connected_spindet(2, 2))
+        []
+        """
+        # Compute all possible holes (occupied orbitals in self) and particles (empty orbitals in self)
+        holes = combinations(self, ed)
+        particles = combinations(Spin_determinant_vector(range(n_orb)) - self, ed)
+        l_hp_pairs = product(holes, particles)
+
+        return [self ^ tuple((set(h) | set(p))) for h, p in l_hp_pairs]
+
+
+class Determinant_generic:
+    
+    spin_types = [Spin_determinant_vector]
+
+    def __init__(self, alpha, beta):
+        self.tag = alpha.tag
+        self.alpha = spin_types[self.tag](alpha)
+        self.beta = spin_types[self.tag](beta)
+
+    def apply_single_excitation(self, h, p, alpha_or_beta):
+        if alpha_or_beta:
+            qelib.qe_spin_det_apply_single_excitation(self.tag,
+                                                      self.alpha.handle,
+                                                      h, p)
+        else:
+            qelib.qe_spin_det_apply_single_excitation(self.tag,
+                                                      self.beta.handle,
+                                                      h, p)
+    def apply_double_excitation_same(self, h, p, h2, p2, alpha_or_beta):
+        if alpha_or_beta:
+            qelib.qe_spin_det_apply_double_excitation(self.tag,
+                                                      self.alpha.handle,
+                                                      h, p, h2, p2)
+        else:
+            qelib.qe_spin_det_apply_double_excitation(self.tag,
+                                                      self.beta.handle,
+                                                      h, p, h2, p2)
+
+    def apply_excitation(
+        self,
+        alpha_exc: Tuple[Tuple[OrbitalIdx, ...], Tuple[OrbitalIdx, ...]],
+        beta_exc: Tuple[Tuple[OrbitalIdx, ...], Tuple[OrbitalIdx, ...]],
+    ) -> NamedTuple:
+        """Apply excitation to self, produce new |Determinant|
+        Each type |Determinant_tuple| and |Determinant_bitstring| has own implementation of `apply_excitation_to_spindet` based on type
+        Inputs
+            :param `alpha_exc` (`beta_exc`): Specifies holes, particles involved in excitation of alpha (beta) |Spin_determinant|
+
+        If either argument is empty (), no excitation is applied
+        >>> Determinant((0, 1), (0, 1)).apply_excitation(((1,), (2,)), ((1,), (2,)))
+        Determinant(alpha=(0, 2), beta=(0, 2))
+        >>> Determinant((0, 1), (0, 1)).apply_excitation(((0, 1), (2, 3)), ((0, 1), (3, 4)))
+        Determinant(alpha=(2, 3), beta=(3, 4))
+        >>> Determinant((0, 1), (0, 1)).apply_excitation(((), ()), ((), ()))
+        Determinant(alpha=(0, 1), beta=(0, 1))
+
+        >>> Determinant(0b11, 0b11).apply_excitation(((1,), (2,)), ((1,), (2,)))
+        Determinant(alpha=5, beta=5)
+        >>> Determinant(0b11, 0b11).apply_excitation(((0, 1), (2, 3)), ((0, 1), (3, 4)))
+        Determinant(alpha=12, beta=24)
+        >>> Determinant(0b11, 0b11).apply_excitation(((), ()), ((), ()))
+        Determinant(alpha=3, beta=3)
+        >>> Determinant(0b11, 0b11).apply_excitation(((1,), (2,)), ((), ()))
+        Determinant(alpha=5, beta=3)
+        """
+
+        # Unpack alpha, beta holes
+        lh_a, lp_a = alpha_exc
+        lh_b, lp_b = beta_exc
+
+        ret = Determinant_generic(self.alpha, self.beta)
+        if len(lh_a) == 1:
+            (h,) = lh_a
+            (p,) = lp_a
+            ret.apply_single(h, p, True)
+        elif len(lh_a) == 2:
+            (h1, h2) = lh_a
+            (p1, p2) = lp_a
+            ret.apply_double_same(h1, p1, h2, p2, True)
+        
+        if len(lh_b) == 1:
+            (h,) = lh_b
+            (p,) = lp_b
+            ret.apply_single(h, p, False)
+        elif len(lh_b) == 2:
+            (h1, h2) = lh_b
+            (p1, p2) = lp_b
+            ret.apply_double_same(h1, p1, h2, p2, False)
+
+        return ret
+
+
 #    ___
 #     |     ._  |  _
 #     | |_| |_) | (/_
