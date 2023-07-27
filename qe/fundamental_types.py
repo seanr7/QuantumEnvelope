@@ -21,7 +21,6 @@ One_electron_integral = Dict[Tuple[OrbitalIdx, OrbitalIdx], float]
 # Load Cpp library with various Cpp functions
 cpp_lib = ctypes.CDLL("./qe/bitstring_ops.so")
 
-
 import qelib
 
 class Spin_determinant_vector:
@@ -123,7 +122,8 @@ class Spin_determinant_vector:
         """
         # TODO: These are returned as |Spin_determinant_tuple|; necessary, because we want to abstract over `popcnt()`
         # Will compute number of holes in certain applications... E.g., in constrained excitations. So want the returned |tuple| to have that member function
-        return (self ^ sdet_j) & self
+        ret = Spin_determinant_vector()
+        return 
 
     def get_particles(self, sdet_j: Spin_determinant_vector) -> Spin_determinant_vector:
         """Return tuple of holes (orbital indices) in the excitation from self -> sdet_j
