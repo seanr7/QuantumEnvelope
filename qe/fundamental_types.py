@@ -111,7 +111,7 @@ class Spin_determinant_vector:
         """
         return qelib.qe_spin_det_vector_popcount(self.handle)
 
-    def get_holes(self, sdet_j: Spin_determinant_vector) -> Spin_determinant_vector:
+    def get_holes(self, right: Spin_determinant_vector) -> Spin_determinant_vector:
         """Return tuple of holes (orbital indices) in the excitation from self -> sdet_j
         >>> Spin_determinant_tuple((0, 2)).get_holes((0, 3))
         (2,)
@@ -123,9 +123,10 @@ class Spin_determinant_vector:
         # TODO: These are returned as |Spin_determinant_tuple|; necessary, because we want to abstract over `popcnt()`
         # Will compute number of holes in certain applications... E.g., in constrained excitations. So want the returned |tuple| to have that member function
         ret = Spin_determinant_vector()
-        return 
+        qelib.qe_spin_det_vector_get_holes(self.handle, right.handle, ret.handle)
+        return ret
 
-    def get_particles(self, sdet_j: Spin_determinant_vector) -> Spin_determinant_vector:
+    def get_particles(self, right: Spin_determinant_vector) -> Spin_determinant_vector:
         """Return tuple of holes (orbital indices) in the excitation from self -> sdet_j
         >>> Spin_determinant_tuple((0, 2)).get_particles((0, 3))
         (3,)
@@ -135,7 +136,9 @@ class Spin_determinant_vector:
         ()
         """
         # Returned as |Spin_determinant_tuple|; same reasoning as above
-        return (self ^ sdet_j) & sdet_j
+        ret = Spin_determinant_vector()
+        qelib.qe_spin_det_vector_get_particles(self.handle, right.handle, ret.handle)
+        return ret
 
     def gen_all_connected_spindet(self, ed: int, n_orb: int) -> Iterator[Tuple[OrbitalIdx, ...]]:
         """Generate all connected spin determinants to self relative to a particular excitation degree
@@ -161,27 +164,44 @@ class Determinant_generic:
 
     def __init__(self, alpha, beta):
         self.tag = alpha.tag
-        self.alpha = spin_types[self.tag](alpha)
-        self.beta = spin_types[self.tag](beta)
+        self.alpha = self.spin_types[self.tag](alpha)
+        self.beta = self.spin_types[self.tag](beta)
+
 
     def apply_single_excitation(self, h, p, alpha_or_beta):
+        ret = Determinant_generic(self.alpha, self.beta)
         if alpha_or_beta:
-            qelib.qe_spin_det_apply_single_excitation(self.tag,
-                                                      self.alpha.handle,
+            qelib.qe_spin_det_apply_single_excitation(ret.tag,
+                                                      ret.alpha.handle,
                                                       h, p)
         else:
-            qelib.qe_spin_det_apply_single_excitation(self.tag,
-                                                      self.beta.handle,
+            qelib.qe_spin_det_apply_single_excitation(ret.tag,
+                                                      ret.beta.handle,
                                                       h, p)
-    def apply_double_excitation_same(self, h, p, h2, p2, alpha_or_beta):
+        return ret
+    
+    def apply_double_excitation_same(self, h1, p1, h2, p2, alpha_or_beta):
+        ret = Determinant_generic(self.alpha, self.beta)
         if alpha_or_beta:
-            qelib.qe_spin_det_apply_double_excitation(self.tag,
-                                                      self.alpha.handle,
-                                                      h, p, h2, p2)
+            qelib.qe_spin_det_apply_double_excitation(ret.tag,
+                                                      ret.alpha.handle,
+                                                      h1, p1, h2, p2)
         else:
-            qelib.qe_spin_det_apply_double_excitation(self.tag,
-                                                      self.beta.handle,
-                                                      h, p, h2, p2)
+            qelib.qe_spin_det_apply_double_excitation(ret.tag,
+                                                      ret.beta.handle,
+                                                      h1, p1, h2, p2)
+        return ret
+
+    def apply_double_excitation_opposite(self, h1, p1, h2, p2):
+        ret = Determinant_generic(self.alpha, self.beta)
+        qelib.qe_spin_det_apply_single_excitation(ret.tag,
+                                                ret.alpha.handle,
+                                                h1, p1)
+        qelib.qe_spin_det_apply_single_excitation(ret.tag,
+                                                ret.beta.handle,
+                                                h2, p2)
+        return ret           
+
 
     def apply_excitation(
         self,
