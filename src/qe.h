@@ -39,5 +39,10 @@ int qe_spin_det_apply_or(int type, void *, void *, void *);
 int qe_spin_det_apply_popcount(int type, void *);
 int qe_spin_det_apply_single_excitation(int type, void *, qe_orbital_int_t, qe_orbital_int_t);
 int qe_spin_det_apply_double_excitation(int type, void *, qe_orbital_int_t, qe_orbital_int_t, qe_orbital_int_t, qe_orbital_int_t);
+int qe_spin_det_apply_exc_degree(int type, void *, void *, void *);
+int qe_spin_det_apply_get_holes(int type, void*, void*, void*);
+int qe_spin_det_apply_get_particles(int type, void*, void*, void*);
+int qe_spin_det_apply_phase_single(int type, void*, qe_orbital_int_t, qe_orbital_int_t);
+int qe_spin_det_apply_phase_double(int type, void*, qe_orbital_int_t, qe_orbital_int_t, qe_orbital_int_t, qe_orbital_int_t);
 
 #endif
