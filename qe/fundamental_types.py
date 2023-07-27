@@ -23,6 +23,11 @@ cpp_lib = ctypes.CDLL("./qe/bitstring_ops.so")
 
 import qelib
 
+#                          
+#    \  / _   _ _|_  _  ._ 
+#     \/ (/_ (_  |_ (_) |  
+#                         
+
 class Spin_determinant_vector:
     def __init__(self, t: Tuple[OrbitalIdx, ...]):
         self.tag = qelib.SPIN_DET_TYPE_VECTOR
@@ -34,129 +39,55 @@ class Spin_determinant_vector:
         return qelib.qe_spin_det_vector_begin(self.handle)
 
     def occupied_orbitals(self) -> Iterator[OrbitalIdx]:
-        """Yield occupied orbital indices in this instance of spin determinant"""
         it = self.get_iterator()
         for i in qelib.qe_spin_det_vector_next(self.handle, it):
             yield i
 
     def __and__(self, right: Spin_determinant_vector) -> Spin_determinant_vector:
-        """Overload `&` operator to perform set intersection
-        Return type |Spin_determinant_tuple|
-        >>> Spin_determinant_tuple((0, 1)) & Spin_determinant_tuple((0, 2))
-        (0,)
-        >>> Spin_determinant_tuple((0, 1)) & Spin_determinant_tuple((2, 3))
-        ()
-        >>> Spin_determinant_tuple((0, 2, 3)) & Spin_determinant_tuple((2, 3))
-        (2, 3)
-        """
+        """Overload `&` operator to perform set intersection"""
         ret = Spin_determinant_vector()
         qelib.qe_spin_det_vector_and(self.handle, right.handle, ret.handle)
         return ret
 
     def __rand__(self, right) -> Spin_determinant_vector:
-        """Reverse overloaded __and__
-        >>> (0, 1) & Spin_determinant_tuple((0, 2))
-        (0,)
-        >>> Spin_determinant_tuple((0, 1)) & Spin_determinant_tuple((0, 2))
-        (0,)
-        """
+        """Reverse overloaded __and__"""
         return self.__and__(right)
 
     def __or__(self, right) -> Spin_determinant_vector:
-        """Overload `|` operator to perform set union
-        Return type |Spin_determinant_tuple|
-        >>> Spin_determinant_tuple((0, 1)) | Spin_determinant_tuple((0, 2))
-        (0, 1, 2)
-        >>> Spin_determinant_tuple((0, 1)) | Spin_determinant_tuple((0, 1))
-        (0, 1)
-        >>> Spin_determinant_tuple((0, 1)) | Spin_determinant_tuple((2, 3))
-        (0, 1, 2, 3)
-        """
+        """Overload `|` operator to perform set union"""
         ret = Spin_determinant_vector()
         qelib.qe_spin_det_vector_or(self.handle, right.handle, ret.handle)
         return ret
 
     def __ror__(self, right) -> Spin_determinant_vector:
-        """Reverse overloaded __or__
-        >>> (0, 1) | Spin_determinant_tuple((0, 2))
-        (0, 1, 2)
-        """
+        """Reverse overloaded __or__"""
         return self.__or__(right)
 
     def __xor__(self, right) -> Spin_determinant_vector:
-        """Overload `^` operator to perform symmetric set difference
-        Return type |Spin_determinant_tuple|
-        >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((0, 2))
-        (1, 2)
-        >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((0, 1))
-        ()
-        >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((2, 3))
-        (0, 1, 2, 3)
-        """
+        """Overload `^` operator to perform symmetric set difference"""
         ret = Spin_determinant_vector()
         qelib.qe_spin_det_vector_xor(self.handle, right.handle, ret.handle)
         return ret
 
     def __rxor__(self, right) -> Spin_determinant_vector:
-        """Reverse overloaded __xor__
-        >>> (0, 1) ^  Spin_determinant_tuple((0, 2))
-        (1, 2)
-        """
+        """Reverse overloaded __xor__"""
         return self.__xor__(right)
 
     def popcnt(self) -> int:
-        """Perform a `popcount'; return length of the tuple
-        >>> Spin_determinant_tuple((0, 2, 3)).popcnt()
-        3
-        """
+        """Perform a `popcount'; return length of the vector"""
         return qelib.qe_spin_det_vector_popcount(self.handle)
 
     def get_holes(self, right: Spin_determinant_vector) -> Spin_determinant_vector:
-        """Return tuple of holes (orbital indices) in the excitation from self -> sdet_j
-        >>> Spin_determinant_tuple((0, 2)).get_holes((0, 3))
-        (2,)
-        >>> Spin_determinant_tuple((0, 2)).get_holes((1, 3))
-        (0, 2)
-        >>> Spin_determinant_tuple((0, 2)).get_holes((0, 2))
-        ()
-        """
-        # TODO: These are returned as |Spin_determinant_tuple|; necessary, because we want to abstract over `popcnt()`
-        # Will compute number of holes in certain applications... E.g., in constrained excitations. So want the returned |tuple| to have that member function
+        """Return tuple of holes (orbital indices) in the excitation from self -> right"""
         ret = Spin_determinant_vector()
         qelib.qe_spin_det_vector_get_holes(self.handle, right.handle, ret.handle)
         return ret
 
     def get_particles(self, right: Spin_determinant_vector) -> Spin_determinant_vector:
-        """Return tuple of holes (orbital indices) in the excitation from self -> sdet_j
-        >>> Spin_determinant_tuple((0, 2)).get_particles((0, 3))
-        (3,)
-        >>> Spin_determinant_tuple((0, 2)).get_particles((1, 3))
-        (1, 3)
-        >>> Spin_determinant_tuple((0, 2)).get_particles((0, 2))
-        ()
-        """
-        # Returned as |Spin_determinant_tuple|; same reasoning as above
+        """Return tuple of holes (orbital indices) in the excitation from self -> right"""
         ret = Spin_determinant_vector()
         qelib.qe_spin_det_vector_get_particles(self.handle, right.handle, ret.handle)
         return ret
-
-    def gen_all_connected_spindet(self, ed: int, n_orb: int) -> Iterator[Tuple[OrbitalIdx, ...]]:
-        """Generate all connected spin determinants to self relative to a particular excitation degree
-        :param n_orb: global parameter
-        >>> sorted(Spin_determinant_tuple((0, 1)).gen_all_connected_spindet(1, 4))
-        [(0, 2), (0, 3), (1, 2), (1, 3)]
-        >>> sorted(Spin_determinant_tuple((0, 1)).gen_all_connected_spindet(2, 4))
-        [(2, 3)]
-        >>> sorted(Spin_determinant_tuple((0, 1)).gen_all_connected_spindet(2, 2))
-        []
-        """
-        # Compute all possible holes (occupied orbitals in self) and particles (empty orbitals in self)
-        holes = combinations(self, ed)
-        particles = combinations(Spin_determinant_vector(range(n_orb)) - self, ed)
-        l_hp_pairs = product(holes, particles)
-
-        return [self ^ tuple((set(h) | set(p))) for h, p in l_hp_pairs]
-
 
 class Determinant_generic:
     
