@@ -227,6 +227,148 @@ TEST_CASE("Testing the `qe_spin_det_vector_apply_double_excitation` function")
     CHECK(a.v == std::vector<qe_orbital_int_t>{0, 2, 4, 6});
 }
 
+size_t qe_spin_det_vector_exc_degree(qe_spin_det_vector_t *a, qe_spin_det_vector_t *b,
+                                     qe_spin_det_vector_t *c)
+{
+    /* XOR into POPCOUNT */
+    qe_spin_det_vector_xor(a, b, c);
+    size_t ed  = qe_spin_det_vector_popcount(c) / 2;
+    return ed;
+}
+
+TEST_CASE("Testing the `qe_spin_det_vector_exc_degree` function")
+{   
+    qe_spin_det_vector_t a {{0, 1, 2, 3}};
+    qe_spin_det_vector_t b {{0, 1, 2, 4}};
+    qe_spin_det_vector_t res {};
+    CHECK(qe_spin_det_vector_exc_degree(&a, &b, &res) == 1);
+
+    res.v.clear();
+    qe_spin_det_vector_t c {{2, 3, 4, 5}};
+    CHECK(qe_spin_det_vector_exc_degree(&a, &c, &res) == 2);
+
+    qe_spin_det_vector_t a_copy;
+    a_copy = a;
+    res.v.clear();
+    CHECK(qe_spin_det_vector_exc_degree(&a, &a_copy, &res) == 0);
+
+}
+
+int qe_spin_det_vector_get_holes(qe_spin_det_vector_t *a, qe_spin_det_vector_t *b,
+                                qe_spin_det_vector_t *c)
+{   
+    /* This function returns a vector of ints that indicate the locations (bits) of the holes involved in a -> b */
+    qe_spin_det_vector_t temp;
+    qe_spin_det_vector_xor(a, b, &temp);
+    qe_spin_det_vector_and(a, &temp, c);
+	
+	return 0;
+}
+
+TEST_CASE("Testing the `qe_spin_det_vector_get_holes` function")
+{   
+    qe_spin_det_vector_t a {{0, 1, 2, 3}};
+    qe_spin_det_vector_t b {{0, 1, 2, 4}};
+    qe_spin_det_vector_t res {};
+    qe_spin_det_vector_get_holes(&a, &b, &res);
+    CHECK(res.v == std::vector<qe_orbital_int_t> {3});
+
+    res.v.clear();
+    qe_spin_det_vector_t c {{2, 3, 4, 5}};    
+    qe_spin_det_vector_get_holes(&a, &c, &res);
+    CHECK(res.v == std::vector<qe_orbital_int_t> {0, 1});
+
+    qe_spin_det_vector_t a_copy;
+    a_copy = a;
+    res.v.clear();
+    qe_spin_det_vector_get_holes(&a, &a_copy, &res);
+    CHECK(res.v == std::vector<qe_orbital_int_t> {});
+}
+
+int qe_spin_det_vector_get_particles(qe_spin_det_vector_t *a, qe_spin_det_vector_t *b,
+                                qe_spin_det_vector_t *c)
+{   
+    /* This function returns a vector of ints that indicate the locations (bits) of the particles involved in a -> b */
+    qe_spin_det_vector_t temp;
+    qe_spin_det_vector_xor(a, b, &temp);
+    qe_spin_det_vector_and(b, &temp, c);
+
+    return 0;
+}
+
+TEST_CASE("Testing the `qe_spin_det_vector_get_particles` function")
+{   
+    qe_spin_det_vector_t a {{0, 1, 2, 3}};
+    qe_spin_det_vector_t b {{0, 1, 2, 4}};
+    qe_spin_det_vector_t res {};
+    qe_spin_det_vector_get_particles(&a, &b, &res);
+    CHECK(res.v == std::vector<qe_orbital_int_t> {4});
+
+    res.v.clear();
+    qe_spin_det_vector_t c {{2, 3, 4, 5}};    
+    qe_spin_det_vector_get_particles(&a, &c, &res);
+    CHECK(res.v == std::vector<qe_orbital_int_t> {4, 5});
+
+    qe_spin_det_vector_t a_copy;
+    a_copy = a;
+    res.v.clear();
+    qe_spin_det_vector_get_particles(&a, &a_copy, &res);
+    CHECK(res.v == std::vector<qe_orbital_int_t> {});
+}
+
+int qe_spin_det_vector_phase_single(qe_spin_det_vector_t *v,
+                                    qe_orbital_int_t hole,
+                                    qe_orbital_int_t particle)
+{
+    auto [j, k] = std::minmax(hole, particle);
+    qe_spin_det_vector_t mask;
+    for (int i = j + 1; i < k; i++){
+        mask.v.push_back(i);
+    }
+    qe_spin_det_vector_t ret;
+    qe_spin_det_vector_and(v, &mask, &ret); 
+
+    bool parity = qe_spin_det_vector_popcount(&ret) % 2;
+
+    return parity ? -1 : 1;
+}
+
+TEST_CASE("Testing the `qe_spin_det_vector_phase_single` function")
+{   
+    qe_spin_det_vector_t a {{0, 4, 6}};
+    CHECK(qe_spin_det_vector_phase_single(&a, 4, 5) == 1);
+
+    qe_spin_det_vector_t b {{0, 1, 8}};
+    CHECK(qe_spin_det_vector_phase_single(&b, 1, 17) == -1);
+
+    qe_spin_det_vector_t c {{0, 1, 4, 8}};
+    CHECK(qe_spin_det_vector_phase_single(&c, 1, 17) == 1);
+
+    qe_spin_det_vector_t d {{0, 1, 4, 7, 8}};
+    CHECK(qe_spin_det_vector_phase_single(&d, 1, 17) == -1);
+}
+
+int qe_spin_det_vector_phase_double(qe_spin_det_vector_t *v,
+                        qe_orbital_int_t h1,
+                        qe_orbital_int_t p1,
+                        qe_orbital_int_t h2,
+                        qe_orbital_int_t p2)
+{
+    int phase = qe_spin_det_vector_phase_single(v, h1, p1) * 
+                qe_spin_det_vector_phase_single(v, h2, p2);
+    if (h2 < p1){ phase *= -1; }
+    if (p2 < h1){ phase *= -1; }
+    return phase;
+}
+
+TEST_CASE("Testing the `qe_spin_det_vector_phase_double` function")
+{   
+    qe_spin_det_vector_t a {{0, 1, 2, 3, 4, 5, 6, 7, 8}};
+    CHECK(qe_spin_det_vector_phase_double(&a, 2, 11, 3, 12) == 1);
+    CHECK(qe_spin_det_vector_phase_double(&a, 2, 11, 8, 17) == -1);
+
+}
+
 // Generic handles
 
 int qe_spin_det_apply_xor(int type, void *a, void *b, void *c)
@@ -288,6 +430,58 @@ int qe_spin_det_apply_double_excitation(int type, void *a, qe_orbital_int_t h,
 					      (qe_orbital_int_t)h2,
 					      (qe_orbital_int_t)p2
 					      );
+	}
+	return -EINVAL;
+}
+
+int qe_spin_det_apply_exc_degree(int type, void *a, void *b, void *c)
+{
+	if (type == SPIN_DET_TYPE_VECTOR) {
+	return qe_spin_det_vector_exc_degree((qe_spin_det_vector_t *)a,
+						(qe_spin_det_vector_t *)b,
+						(qe_spin_det_vector_t *)c
+						);
+	}
+	return -EINVAL;
+}
+
+int qe_spin_det_apply_get_holes(int type, void* a, void* b, void* c){
+	if (type == SPIN_DET_TYPE_VECTOR) {
+		return qe_spin_det_vector_get_holes((qe_spin_det_vector_t *)a,
+							(qe_spin_det_vector_t *)b,
+							(qe_spin_det_vector_t *)c
+							);
+	}
+	return -EINVAL;
+}
+
+int qe_spin_det_apply_get_particles(int type, void* a, void* b, void* c){
+	if (type == SPIN_DET_TYPE_VECTOR) {
+		return qe_spin_det_vector_get_holes((qe_spin_det_vector_t *)a,
+							(qe_spin_det_vector_t *)b,
+							(qe_spin_det_vector_t *)c
+							);
+	}
+	return -EINVAL;
+}
+
+int qe_spin_det_apply_phase_single(int type, void* a, qe_orbital_int_t h, qe_orbital_int_t p){
+	if (type == SPIN_DET_TYPE_VECTOR) {
+		return qe_spin_det_vector_phase_single((qe_spin_det_vector_t *) a,
+										(qe_orbital_int_t)h,
+										(qe_orbital_int_t)p);
+	}
+	return -EINVAL;
+}
+
+int qe_spin_det_apply_phase_double(int type, void* a, qe_orbital_int_t h1, qe_orbital_int_t p1,
+													qe_orbital_int_t h2, qe_orbital_int_t p2){
+	if (type == SPIN_DET_TYPE_VECTOR) {
+		return qe_spin_det_vector_phase_double((qe_spin_det_vector_t *) a,
+										(qe_orbital_int_t)h1,
+										(qe_orbital_int_t)p1,
+										(qe_orbital_int_t)h2,
+										(qe_orbital_int_t)p2);
 	}
 	return -EINVAL;
 }
