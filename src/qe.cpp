@@ -227,12 +227,12 @@ TEST_CASE("Testing the `qe_spin_det_vector_apply_double_excitation` function")
     CHECK(a.v == std::vector<qe_orbital_int_t>{0, 2, 4, 6});
 }
 
-size_t qe_spin_det_vector_exc_degree(qe_spin_det_vector_t *a, qe_spin_det_vector_t *b,
-                                     qe_spin_det_vector_t *c)
+size_t qe_spin_det_vector_exc_degree(qe_spin_det_vector_t *a, qe_spin_det_vector_t *b)
 {
     /* XOR into POPCOUNT */
-    qe_spin_det_vector_xor(a, b, c);
-    size_t ed  = qe_spin_det_vector_popcount(c) / 2;
+    qe_spin_det_vector_t temp;
+    qe_spin_det_vector_xor(a, b, &temp);
+    size_t ed  = qe_spin_det_vector_popcount(&temp) / 2;
     return ed;
 }
 
@@ -240,17 +240,14 @@ TEST_CASE("Testing the `qe_spin_det_vector_exc_degree` function")
 {   
     qe_spin_det_vector_t a {{0, 1, 2, 3}};
     qe_spin_det_vector_t b {{0, 1, 2, 4}};
-    qe_spin_det_vector_t res {};
-    CHECK(qe_spin_det_vector_exc_degree(&a, &b, &res) == 1);
+    CHECK(qe_spin_det_vector_exc_degree(&a, &b) == 1);
 
-    res.v.clear();
     qe_spin_det_vector_t c {{2, 3, 4, 5}};
-    CHECK(qe_spin_det_vector_exc_degree(&a, &c, &res) == 2);
+    CHECK(qe_spin_det_vector_exc_degree(&a, &c) == 2);
 
     qe_spin_det_vector_t a_copy;
     a_copy = a;
-    res.v.clear();
-    CHECK(qe_spin_det_vector_exc_degree(&a, &a_copy, &res) == 0);
+    CHECK(qe_spin_det_vector_exc_degree(&a, &a_copy) == 0);
 
 }
 
@@ -434,12 +431,11 @@ int qe_spin_det_apply_double_excitation(int type, void *a, qe_orbital_int_t h,
 	return -EINVAL;
 }
 
-int qe_spin_det_apply_exc_degree(int type, void *a, void *b, void *c)
+int qe_spin_det_apply_exc_degree(int type, void *a, void *b)
 {
 	if (type == SPIN_DET_TYPE_VECTOR) {
 	return qe_spin_det_vector_exc_degree((qe_spin_det_vector_t *)a,
-						(qe_spin_det_vector_t *)b,
-						(qe_spin_det_vector_t *)c
+						(qe_spin_det_vector_t *)b
 						);
 	}
 	return -EINVAL;

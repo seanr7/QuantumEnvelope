@@ -27,7 +27,19 @@ int qe_spin_det_vector_apply_double_excitation(qe_spin_det_vector_t *v,
 					       qe_orbital_int_t p1,
 					       qe_orbital_int_t h2,
 					       qe_orbital_int_t p2);
-
+size_t qe_spin_det_vector_exc_degree(qe_spin_det_vector_t *a, qe_spin_det_vector_t *b);
+int qe_spin_det_vector_get_holes(qe_spin_det_vector_t *a, qe_spin_det_vector_t *b,
+			   qe_spin_det_vector_t *c);
+int qe_spin_det_vector_get_particles(qe_spin_det_vector_t *a, qe_spin_det_vector_t *b,
+			   qe_spin_det_vector_t *c);
+int qe_spin_det_vector_phase_single(qe_spin_det_vector_t *v,
+					       qe_orbital_int_t hole,
+					       qe_orbital_int_t particle);
+int qe_spin_det_vector_phase_double(qe_spin_det_vector_t *v,
+					       qe_orbital_int_t h1,
+					       qe_orbital_int_t p1,
+					       qe_orbital_int_t h2,
+					       qe_orbital_int_t p2);
 }
 
 #define SPIN_DET_TYPE_VECTOR 0
@@ -39,7 +51,7 @@ int qe_spin_det_apply_or(int type, void *, void *, void *);
 int qe_spin_det_apply_popcount(int type, void *);
 int qe_spin_det_apply_single_excitation(int type, void *, qe_orbital_int_t, qe_orbital_int_t);
 int qe_spin_det_apply_double_excitation(int type, void *, qe_orbital_int_t, qe_orbital_int_t, qe_orbital_int_t, qe_orbital_int_t);
-int qe_spin_det_apply_exc_degree(int type, void *, void *, void *);
+int qe_spin_det_apply_exc_degree(int type, void *, void *);
 int qe_spin_det_apply_get_holes(int type, void*, void*, void*);
 int qe_spin_det_apply_get_particles(int type, void*, void*, void*);
 int qe_spin_det_apply_phase_single(int type, void*, qe_orbital_int_t, qe_orbital_int_t);

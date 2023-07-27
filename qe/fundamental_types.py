@@ -35,6 +35,7 @@ class Spin_determinant_vector:
         npa_size = len(t)
         self.handle = qelib.qe_spin_det_vector_create(npa, npa_size)
 
+    # TODO: This
     def get_iterator(self):
         return qelib.qe_spin_det_vector_begin(self.handle)
 
@@ -88,8 +89,20 @@ class Spin_determinant_vector:
         ret = Spin_determinant_vector()
         qelib.qe_spin_det_vector_get_particles(self.handle, right.handle, ret.handle)
         return ret
-
+    
+#   ______     _                      _                   _
+#   |  _  \   | |                    (_)                 | |
+#   | | | |___| |_ ___ _ __ _ __ ___  _ _ __   __ _ _ __ | |_
+#   | | | / _ \ __/ _ \ '__| '_ ` _ \| | '_ \ / _` | '_ \| __|
+#   | |/ /  __/ ||  __/ |  | | | | | | | | | | (_| | | | | |_
+#   |___/ \___|\__\___|_|  |_| |_| |_|_|_| |_|\__,_|_| |_|\__|
+#
+#
+    
 class Determinant_generic:
+    """Slater determinant: Product of 2 determinants.
+    One for $\alpha$ electrons and one for \beta electrons.
+    Abstract |Determinant| class"""
     
     spin_types = [Spin_determinant_vector]
 
@@ -97,7 +110,6 @@ class Determinant_generic:
         self.tag = alpha.tag
         self.alpha = self.spin_types[self.tag](alpha)
         self.beta = self.spin_types[self.tag](beta)
-
 
     def apply_single_excitation(self, h, p, alpha_or_beta):
         ret = Determinant_generic(self.alpha, self.beta)
@@ -133,59 +145,14 @@ class Determinant_generic:
                                                 h2, p2)
         return ret           
 
+    def exc_degree(self, right) -> Tuple[int, int]:
+        # Exc is the function from cpp that was loaded into drivers.py
+        """Compute excitation degree; the number of orbitals which differ between two |Determinants| self, right"""
 
-    def apply_excitation(
-        self,
-        alpha_exc: Tuple[Tuple[OrbitalIdx, ...], Tuple[OrbitalIdx, ...]],
-        beta_exc: Tuple[Tuple[OrbitalIdx, ...], Tuple[OrbitalIdx, ...]],
-    ) -> NamedTuple:
-        """Apply excitation to self, produce new |Determinant|
-        Each type |Determinant_tuple| and |Determinant_bitstring| has own implementation of `apply_excitation_to_spindet` based on type
-        Inputs
-            :param `alpha_exc` (`beta_exc`): Specifies holes, particles involved in excitation of alpha (beta) |Spin_determinant|
+        ed_a = qelib.qe_spin_det_apply_exc_degree(self.tag, self.alpha.handle, right.alpha.handle)
+        ed_b = qelib.qe_spin_det_apply_exc_degree(self.tag, self.beta.handle, right.beta.handle)
 
-        If either argument is empty (), no excitation is applied
-        >>> Determinant((0, 1), (0, 1)).apply_excitation(((1,), (2,)), ((1,), (2,)))
-        Determinant(alpha=(0, 2), beta=(0, 2))
-        >>> Determinant((0, 1), (0, 1)).apply_excitation(((0, 1), (2, 3)), ((0, 1), (3, 4)))
-        Determinant(alpha=(2, 3), beta=(3, 4))
-        >>> Determinant((0, 1), (0, 1)).apply_excitation(((), ()), ((), ()))
-        Determinant(alpha=(0, 1), beta=(0, 1))
-
-        >>> Determinant(0b11, 0b11).apply_excitation(((1,), (2,)), ((1,), (2,)))
-        Determinant(alpha=5, beta=5)
-        >>> Determinant(0b11, 0b11).apply_excitation(((0, 1), (2, 3)), ((0, 1), (3, 4)))
-        Determinant(alpha=12, beta=24)
-        >>> Determinant(0b11, 0b11).apply_excitation(((), ()), ((), ()))
-        Determinant(alpha=3, beta=3)
-        >>> Determinant(0b11, 0b11).apply_excitation(((1,), (2,)), ((), ()))
-        Determinant(alpha=5, beta=3)
-        """
-
-        # Unpack alpha, beta holes
-        lh_a, lp_a = alpha_exc
-        lh_b, lp_b = beta_exc
-
-        ret = Determinant_generic(self.alpha, self.beta)
-        if len(lh_a) == 1:
-            (h,) = lh_a
-            (p,) = lp_a
-            ret.apply_single(h, p, True)
-        elif len(lh_a) == 2:
-            (h1, h2) = lh_a
-            (p1, p2) = lp_a
-            ret.apply_double_same(h1, p1, h2, p2, True)
-        
-        if len(lh_b) == 1:
-            (h,) = lh_b
-            (p,) = lp_b
-            ret.apply_single(h, p, False)
-        elif len(lh_b) == 2:
-            (h1, h2) = lh_b
-            (p1, p2) = lp_b
-            ret.apply_double_same(h1, p1, h2, p2, False)
-
-        return ret
+        return ed_a, ed_b
 
 
 #    ___

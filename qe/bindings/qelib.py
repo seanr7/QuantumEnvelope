@@ -3,6 +3,7 @@ import ctypes
 qelib = ctypes.find_library("../../src/qe.so")
 
 QELIB_SPIN_DET_TYPE_VECTOR = 0
+QELIB_SPIN_DET_TYPE_BITSET = 1
 
 qelib_qe_orbital_int_type = ctypes.c_uint32
 qelib_qe_spin_det_vector_type = ctypes.c_void_p
