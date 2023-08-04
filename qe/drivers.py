@@ -1037,9 +1037,9 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
     def category_C(
         idx: Two_electron_integral_index,
         psi_i: Psi_det,
-        det_to_index_j,
-        spindet_a_occ_i,
-        spindet_b_occ_i,
+        det_to_index_j: Dict[Determinant, int],
+        spindet_a_occ_i: Dict[OrbitalIdx, Set[int]],
+        spindet_b_occ_i: Dict[OrbitalIdx, Set[int]],
     ):
         """
         Return determinant pairs (I, J) connected by integral idx in category C. Used in the Hamiltonian build
@@ -2026,12 +2026,13 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             )
 
     def H_indices(
-        self, psi_i: Psi_det, psi_j: Psi_det
+        self,
+        psi_i: Psi_det,
+        det_to_index_j: Dict[Determinant, int],
+        spindet_a_occ_i: Dict[OrbitalIdx, int],
+        spindet_b_occ_i: Dict[OrbitalIdx, int],
     ) -> Iterator[Two_electron_integral_index_phase]:
         # Returns H_indices, and idx of associated integral
-        generator = H_indices_generator(psi_i, psi_j)
-        spindet_a_occ_i, spindet_b_occ_i = generator.spindet_occ_int
-        det_to_index_j = generator.det_to_index
         for idx4, _ in self.d_two_e_integral.items():
             idx = compound_idx4_reverse(idx4)
             for (
@@ -2066,12 +2067,14 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield from self.category_G(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i)
 
     def H_indices_pt2(
-        self, psi_i: Psi_det, C: Tuple[OrbitalIdx, ...]
+        self,
+        psi_i: Psi_det,
+        C: Tuple[OrbitalIdx, ...],
+        spindet_a_occ_i: Dict[OrbitalIdx, int],
+        spindet_b_occ_i: Dict[OrbitalIdx, int],
     ) -> Iterator[Two_electron_integral_index_phase]:
         # Returns H_indices, and idx of associated integral
         # For pt2 selection!
-        generator = H_indices_generator(psi_i)
-        spindet_a_occ_i, spindet_b_occ_i = generator.spindet_occ_int
         for idx4, _ in self.d_two_e_integral.items():
             idx = compound_idx4_reverse(idx4)
             for (
@@ -2085,8 +2088,8 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         idx: Two_electron_integral_index,
         psi_i: Psi_det,
         C: Tuple[OrbitalIdx, ...],
-        spindet_a_occ_i,
-        spindet_b_occ_i,
+        spindet_a_occ_i: Dict[OrbitalIdx, int],
+        spindet_b_occ_i: Dict[OrbitalIdx, int],
     ) -> Iterator[Two_electron_integral_index_phase]:
         # Call to get indices of determinant pairs + associated phase for a given integral idx
         category = integral_category(*idx)
@@ -2115,10 +2118,14 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.N_orb
             )
 
-    def H(self, psi_i, psi_j) -> List[List[Energy]]:
-        generator = H_indices_generator(psi_i, psi_j)
-        spindet_a_occ_i, spindet_b_occ_i = generator.spindet_occ_int
-        det_to_index_j = generator.det_to_index
+    def H(
+        self,
+        psi_i: Psi_det,
+        psi_j: Psi_det,
+        det_to_index_j: Dict[Determinant, int],
+        spindet_a_occ_i: Dict[OrbitalIdx, int],
+        spindet_b_occ_i: Dict[OrbitalIdx, int],
+    ) -> List[List[Energy]]:
         # This is the function who will take foreever
         h = np.zeros(shape=(len(psi_i), len(psi_j)))
         for idx4, integral_values in self.d_two_e_integral.items():
@@ -2129,55 +2136,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             ) in self.H_indices_idx(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i):
                 h[a, b] += phase * integral_values
         return h
-
-
-class H_indices_generator(object):
-    """Generate and cache necessary utilities for building the
-    two-electron Hamiltonian in an integral-driven fashion.
-    Re-created at each CIPSI iteration; i.e. for each new list of internal determinants."""
-
-    def __init__(self, psi_internal: Psi_det, psi_external: Psi_det = None):
-        # Application dependent
-        # If Davidson diagonalization, psi_i = psi_j
-        # If PT2 selection, psi_i \neq psi_j
-        if psi_external is None:
-            psi_external = psi_internal
-        self.psi_i = psi_internal
-        self.psi_j = psi_external
-
-    @staticmethod
-    def get_spindet_a_occ_spindet_b_occ(
-        psi_i: Psi_det,
-    ) -> Tuple[Dict[OrbitalIdx, Set[int]], Dict[OrbitalIdx, Set[int]]]:
-        """
-        Return (two) dicts mapping spin orbital indices -> determinants that are occupied in those orbitals
-        >>> H_indices_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
-        (defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}}),
-         defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}}))
-        >>> H_indices_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,),beta=(0,))])[0][1]
-        set()
-        """
-
-        # TODO: Implement bitstring rep
-        # Can generate det_to_indices hash in here
-        def get_dets_occ(psi_i: Psi_det, spin: str) -> Dict[OrbitalIdx, Set[int]]:
-            ds = defaultdict(set)
-            for i, det in enumerate(psi_i):
-                for o in getattr(det, spin):
-                    ds[o].add(i)
-            return ds
-
-        return tuple(get_dets_occ(psi_i, spin) for spin in ["alpha", "beta"])
-
-    @cached_property
-    def det_to_index(self):
-        # Create and cache dictionary mapping connected determinants \in psi_j to associated indices.
-        return {det: i for i, det in enumerate(self.psi_j)}
-
-    @cached_property
-    def spindet_occ_int(self):
-        # Create and cache dictionaries mapping spin-orbital indices to determinants \in psi_i to associated indices
-        return self.get_spindet_a_occ_spindet_b_occ(self.psi_i)
 
 
 #   _   _                 _ _ _              _
@@ -2206,11 +2164,11 @@ class Hamiltonian_generator(object):
     Called and re-created at each CIPSI iteration; i.e. each time determinants
     are added to the internal wave-function.
 
-    :param comm: MPI.COMM_WORLD communicator
-    :param E0: Float, energy
+    :param comm:             MPI.COMM_WORLD communicator
+    :param E0:               Float, energy
     :param d_one_e_integral: Dictionary of one-electorn integrals
     :param d_two_e_integral: Dictionary of two-electorn integrals
-    :param driven_by: generate H in a an integral/determinant-driven fashion.
+    :param driven_by:        Do we generate H in an integral or determinant-driven fashion?
 
     ~
     Slater-Condon Rules
@@ -2253,53 +2211,199 @@ class Hamiltonian_generator(object):
         self.d_two_e_integral = d_two_e_integral
         self.driven_by = driven_by
 
+    # TODO: Will have to adjust these functions to handle the `two-layer splitting`
+    # i.e., two ranks having the same psi_local, but different sets of the two-electron integrals...
+    # I think it's just a matter of.. for self.world_size, how many of these ranks to we dedicate to determinant splits
+    # Then, based on how many are left over, split integrals.
+
     @cached_property
-    def distribution(self):
-        """
+    def det_distribution(self):
+        """Handle distribution of internal determinants; split evenly across ranks
         >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*100)
         >>> h.world_size = 3
-        >>> h.distribution
+        >>> h.det_distribution
         array([34, 33, 33], dtype=int32)
         >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*101)
         >>> h.world_size = 3
-        >>> h.distribution
+        >>> h.det_distribution
         array([34, 34, 33], dtype=int32)
         >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*102)
         >>> h.world_size = 3
-        >>> h.distribution
+        >>> h.det_distribution
         array([34, 34, 34], dtype=int32)
         """
-        # At initialization, each rank computes distribution of determinants
         floor, remainder = divmod(self.full_problem_size, self.world_size)
         ceiling = floor + 1
         return np.array([ceiling] * remainder + [floor] * (self.world_size - remainder), dtype="i")
 
     @cached_property
     def local_size(self):
-        # At initialization, each rank computes distribution of determinants
-        return self.distribution[self.rank]
+        # What is the size of the `local` internal space available to the mpi rank?
+        return self.det_distribution[self.rank]
 
     @cached_property
-    def offsets(self):
-        """
-        >>> __test__= { "Hamiltonian_generator.offsets": Hamiltonian_generator.offsets }
+    def det_offsets(self):
+        """Offsets of determinants in mem
+        >>> __test__= { "Hamiltonian_generator.offsets": Hamiltonian_generator.det_offsets }
         >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*100)
         >>> h.world_size = 3
-        >>> h.offsets
+        >>> h.det_offsets
         array([ 0, 34, 67], dtype=int32)
         """
-        # Compute offsets (start of the local section) for all nodes
         A = np.zeros(self.world_size, dtype="i")
-        np.add.accumulate(self.distribution[:-1], out=A[1:])
+        np.add.accumulate(self.det_distribution[:-1], out=A[1:])
         return A
 
     @cached_property
     def psi_local(self):
+        """Splitting of wave function.
+        Each rank grabs local portion of the internal determinants according to the work distribution
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [Determinant((0,), (0,)), Determinant((1,), (1,))])
+        >>> h.world_size = 2
+        >>> h.rank = 0
+        >>> h.psi_local
+        [Determinant(alpha=(0,), beta=(0,))]
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [Determinant((0,), (0,)), Determinant((1,), (1,))])
+        >>> h.world_size = 2
+        >>> h.rank = 1
+        >>> h.psi_local
+        [Determinant(alpha=(1,), beta=(1,))]
+        """
         # TODO: Right now, having each rank do this. Will re-do each iteration, but can be optimized somehow
-        # Each rank computes local determinants
         return self.psi_internal[
-            self.offsets[self.rank] : (self.offsets[self.rank] + self.distribution[self.rank])
+            self.det_offsets[self.rank] : (
+                self.det_offsets[self.rank] + self.det_distribution[self.rank]
+            )
         ]
+
+    # def integral_load_balancing(self):
+    #     """For given local portion of the wave function `psi_local', add another layer of splitting
+    #     Estimate the amount of work done by each two-electron integral <ij|kl> according to the number of determinants
+    #     in psi_local that <ij|kl> might contribute to.
+    #     """
+    #     # Initialize array to track workload of each rank
+    #     W = np.zeros(shape=(self.world_size,), dtype="i")
+    #     H = []  # Track work dist.
+    #     # Grab dicitionaries mapping determinant indices <-> spin-orbitals occupied in those determinants
+    #     spindet_a_occ_i, spindet_b_occ_i = self.spindet_occupied_int
+    #     # Create a dictionary for the `local` two-electron integrals and their values
+    #     local_d_two_e_integral = defaultdict(int)
+    #     # Loop over two-electron integrals
+    #     for idx in self.d_two_e_integral:
+    #         category = integral_category(idx)
+    #         # Unpack spin-orbital indices of current integral
+    #         i, j, k, l = idx
+    #         # h is estimation fo work for <ij|kl>; initialize to 0 for each integral
+    #         h = 0
+    #         if category == "A":
+    #             # i = j = k = l, e.g. <11|11>
+    #             # Estimated amount of work <ij|kl> will do
+    #             h += len(
+    #                 Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+    #                     spindet_a_occ_i, spindet_b_occ_i, {"same": {i}, "opposite": {j}}, "all"
+    #                 )
+    #             )
+    #         elif category == "B":
+    #             # i = k < j = l, e.g. <12|12>
+    #             h += len(
+    #                 Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+    #                     spindet_a_occ_i, spindet_b_occ_i, {"same": {i}, "opposite": {j}}, "all"
+    #                 )
+    #             )
+    #             h += len(
+    #                 Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+    #                     spindet_a_occ_i, spindet_b_occ_i, {"same": {i, j}}, "all"
+    #                 )
+    #             )
+    #             h += len(
+    #                 Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+    #                     spindet_b_occ_i, spindet_a_occ_i, {"same": {i}, "opposite": {j}}, "all"
+    #                 )
+    #             )
+    #             h += len(
+    #                 Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+    #                     spindet_b_occ_i, spindet_a_occ_i, {"same": {i, j}}, "all"
+    #                 )
+    #             )
+    #         elif category == "C":
+    #             if i == k:  # <ij|il> = <ji|li>, ja(b) <-> la(b), occ = ia or ib
+    #                 det_indices_1 = chain(
+    #                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+    #                         spindet_occ_i, {}, {"same": {j, i}}, {"same": {k}}
+    #                     ),
+    #                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+    #                         spindet_occ_i, oppspindet_occ_i, {"same": {i}, "opposite": {j}}, {"same": {k}}
+    #                     ),
+    #                 )
+    #                 det_indices_2 = chain(
+    #                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+    #                         spindet_occ_i, {}, {"same": {j, k}}, {"same": {i}}
+    #                     ),
+    #                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+    #                         spindet_occ_i, oppspindet_occ_i, {"same": {k}, "opposite": {j}}, {"same": {i}}
+    #                     ),
+    #                 )
+    #             else:  # j == l, <ji|jk> = <ij|kj>, ia(b) to ka(b), occ = ja or jb
+
+    #     # Handle case where integral contributes to zero determinant pairs; no one receives it
+    #     if h:
+    #         _, loc = self.comm.allreduce(
+    #             (W[self.rank], self.rank), MPI.MINLOC
+    #         )  # This is a tuple, so use python command
+    #         if loc == self.rank:  # Rank with lowest amount of work collects current constraint
+    #             # Since we are using default dict, this adds the key of <ij|kl> to the local dict
+    #             # To that key, we associate the value of the two-electron integral which we grab from the full dictionary
+    #             local_d_two_e_integral[compound_idx4(i, j, k, l)] = self.d_two_e_integral[
+    #                 compound_idx4(i, j, k, l)
+    #             ]
+    #             H.append(h)
+    #             W[self.rank] += h  # Add h to the amount of `work` rank has
+
+    # @cached_property
+    # def two_electron_integrals_local(self):
+    #     return self.integral_load_balancing()
+
+    # Generate and cache necessary utilities for building the two-electron Hamiltonian in an integral-driven fashion.
+    @staticmethod
+    def get_spindet_a_occ_spindet_b_occ(
+        psi_i: Psi_det,
+    ) -> Tuple[Dict[OrbitalIdx, Set[int]], Dict[OrbitalIdx, Set[int]]]:
+        """
+        Return (two) dicts mapping spin orbital indices -> determinants that are occupied in those orbitals
+        >>> H_indices_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
+        (defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}}),
+         defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}}))
+        >>> H_indices_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,),beta=(0,))])[0][1]
+        set()
+        """
+
+        # TODO: Implement bitstring rep
+        # Can generate det_to_indices hash in here
+        def get_dets_occ(psi_i: Psi_det, spin: str) -> Dict[OrbitalIdx, Set[int]]:
+            ds = defaultdict(set)
+            for i, det in enumerate(psi_i):
+                for o in getattr(det, spin):
+                    ds[o].add(i)
+            return ds
+
+        return tuple(get_dets_occ(psi_i, spin) for spin in ["alpha", "beta"])
+
+    @cached_property
+    def det_to_index_internal(self):
+        # Create and cache dictionary mapping connected determinants \in psi_internal to associated indices.
+        return {det: i for i, det in enumerate(self.psi_internal)}
+
+    @cached_property
+    def spindets_occupied_in_local_dets(self):
+        # Create and cache dictionaries mapping spin-orbital indices to determinants \in psi_locala to associated indices
+        # Used in buidling H
+        return self.get_spindet_a_occ_spindet_b_occ(self.psi_local)
+
+    @cached_property
+    def spindets_occupied_in_internal_dets(self):
+        # Create and cache dictionaries mapping spin-orbital indices to determinants \in psi_internal to associated indices
+        # Used in PT2
+        return self.get_spindet_a_occ_spindet_b_occ(self.psi_internal)
 
     @cached_property
     def N_orb(self):
@@ -2346,7 +2450,19 @@ class Hamiltonian_generator(object):
         """Build row-wise portion of Hamiltonian matrix (H_i).
         :return H_i: len(self.psi_local) \times len(self.psi_j), as numpy array"""
         H_i_1e = self.Hamiltonian_1e_driver.H(self.psi_local, self.psi_internal)
-        H_i_2e = self.Hamiltonian_2e_driver.H(self.psi_local, self.psi_internal)
+        if self.driven_by == "determinant":
+            H_i_2e = self.Hamiltonian_2e_driver.H(self.psi_local, self.psi_internal)
+        elif self.driven_by == "integral":
+            spindet_a_occ_local, spindet_b_occ_local = self.spindets_occupied_in_local_dets
+            H_i_2e = self.Hamiltonian_2e_driver.H(
+                self.psi_local,
+                self.psi_internal,
+                self.det_to_index_internal,
+                spindet_a_occ_local,
+                spindet_b_occ_local,
+            )
+        else:
+            raise NotImplementedError
         return H_i_1e + H_i_2e
 
     @cached_property
@@ -2388,13 +2504,27 @@ class Hamiltonian_generator(object):
         Works for integral-driven or determinant-driven implementation.
         """
         H_i_2e_matrix_elements = defaultdict(int)
-        for (I, J), idx, phase in self.Hamiltonian_2e_driver.H_indices(
-            self.psi_local, self.psi_internal
-        ):
-            # Update (I, J)th 2e matrix element
-            H_i_2e_matrix_elements[(I, J)] += phase * self.Hamiltonian_2e_driver.H_ijkl_orbital(
-                *idx
-            )
+        if self.driven_by == "determinant":
+            for (I, J), idx, phase in self.Hamiltonian_2e_driver.H_indices(
+                self.psi_local, self.psi_internal
+            ):
+                # Update (I, J)th 2e matrix element
+                H_i_2e_matrix_elements[(I, J)] += phase * self.Hamiltonian_2e_driver.H_ijkl_orbital(
+                    *idx
+                )
+
+        elif self.driven_by == "integral":
+            spindet_a_occ_local, spindet_b_occ_local = self.spindets_occupied_in_local_dets
+            for (I, J), idx, phase in self.Hamiltonian_2e_driver.H_indices(
+                self.psi_local, self.det_to_index_internal, spindet_a_occ_local, spindet_b_occ_local
+            ):
+                # Update (I, J)th 2e matrix element
+                H_i_2e_matrix_elements[(I, J)] += phase * self.Hamiltonian_2e_driver.H_ijkl_orbital(
+                    *idx
+                )
+        else:
+            raise NotImplementedError
+
         # Remove the default dict
         return dict(H_i_2e_matrix_elements)
 
@@ -2474,8 +2604,9 @@ class Davidson_manager(object):
         # TODO: Is there a best practice with this sort of thing? (Computing dist. of work and the like)
         # Hamiltonian_generator computes dist. of work, so pass these to this class for easier reference.
         self.full_problem_size = H_i_generator.full_problem_size
-        self.distribution = H_i_generator.distribution
-        self.offsets = H_i_generator.offsets
+        # TODO: Add integral dist...
+        self.distribution = H_i_generator.det_distribution
+        self.offsets = H_i_generator.det_offsets
         self.local_size = H_i_generator.local_size
 
     def parallel_iteration_restart(self, dim_S, n_eig, n_newvecs, X_ik, V_ik, W_ik):
@@ -2746,9 +2877,9 @@ class Powerplant_manager(object):
         self.H_i_generator = H_i_generator
         # Hamiltonian_generator computes dist. of work, so pass these to this class for easier reference.
         self.full_problem_size = H_i_generator.full_problem_size
-        self.internal_distribution = H_i_generator.distribution
-        # Offsets + distribution used for distributed computation of E_var
-        self.internal_offsets = H_i_generator.offsets
+        self.internal_distribution = H_i_generator.det_distribution
+        # Offsets + distribution (if determinants) used for distributed computation of E_var
+        self.internal_offsets = H_i_generator.det_offsets
         self.psi_internal = self.H_i_generator.psi_internal
         self.N_orb = self.H_i_generator.N_orb
 
@@ -2865,8 +2996,13 @@ class Powerplant_manager(object):
                             * self.H_i_generator.Hamiltonian_2e_driver.H_ijkl_orbital(*idx)
                         )
         elif self.H_i_generator.driven_by == "integral":
+            # Utilities for integral-driven code; cached with instance of H_i_generator_class
+            (
+                spindet_a_occ_internal,
+                spindet_b_occ_internal,
+            ) = self.H_i_generator.spindets_occupied_in_internal_dets
             for (I, det_J), idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_indices_pt2(
-                self.psi_internal, C
+                self.psi_internal, C, spindet_a_occ_internal, spindet_b_occ_internal
             ):
                 nominator_conts_table[det_J] += (
                     c[I] * phase * self.H_i_generator.Hamiltonian_2e_driver.H_ijkl_orbital(*idx)
@@ -3081,6 +3217,20 @@ def check_constraint(det: Determinant, spin="alpha"):
 
 
 def dispatch_local_constraints(
+    comm: MPI.COMM_WORLD,
+    psi: Psi_det,
+    n_orb: int,
+    driven_by="determinant",
+) -> List[Tuple[OrbitalIdx, ...]]:
+    if driven_by == "determinant":
+        return dispatch_local_constraints_det_driven(comm, psi, n_orb)
+    elif driven_by == "integral":
+        raise NotImplementedError
+    else:
+        raise NotImplementedError
+
+
+def dispatch_local_constraints_det_driven(
     comm: MPI.COMM_WORLD, psi: Psi_det, n_orb: int
 ) -> List[Tuple[OrbitalIdx, ...]]:
     """MPI function, perform static load balancing + distribution of triplet-constraints to MPI ranks
