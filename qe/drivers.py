@@ -944,6 +944,11 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         for (I, det_J), phase in zip(int_ext_pairs, phase_of_batch):
             yield (I, det_J), phase
 
+    #     _
+    #    /   _. _|_  _   _   _  ._      /\
+    #    \_ (_|  |_ (/_ (_| (_) | \/   /--\
+    #                    _|       /
+
     @staticmethod
     def estimate_work_category_A(
         idx: Two_electron_integral_index,
@@ -1008,6 +1013,11 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             )
 
         yield from do_diagonal_A(i, j, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i)
+
+    #     _                             _
+    #    /   _. _|_  _   _   _  ._     |_)
+    #    \_ (_|  |_ (/_ (_| (_) | \/   |_)
+    #                    _|       /
 
     @staticmethod
     def estimate_work_category_B(
@@ -1103,6 +1113,11 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
 
         yield from do_diagonal_B(i, j, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i)
 
+    #     _                             _
+    #    /   _. _|_  _   _   _  ._     /
+    #    \_ (_|  |_ (/_ (_| (_) | \/   \_
+    #                    _|       /
+
     @staticmethod
     def estimate_work_category_C(
         idx: Two_electron_integral_index,
@@ -1132,7 +1147,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         else:  # j == l, <ji|jk> = <ij|kj>, ia(b) to ka(b), occ = ja or jb
             _h, _p, occ = i, k, j
 
-        for (h, p) in permutations([_h, _p], 2):
+        for h, p in permutations([_h, _p], 2):
             # occ can be same-spin or opposite-spin as h, p
             work_est += len(
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -1462,6 +1477,11 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield from do_single_C_pt2(j, i, k, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
             yield from do_single_C_pt2(j, k, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
 
+    #     _                             _
+    #    /   _. _|_  _   _   _  ._     | \
+    #    \_ (_|  |_ (/_ (_| (_) | \/   |_/
+    #                    _|       /
+
     @staticmethod
     def estimate_work_category_D(
         idx: Two_electron_integral_index,
@@ -1488,7 +1508,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             _h, _p, occ = i, l, i
         else:  # i < j == k == l, <ij|jj> = <jj|ij> = <jj|ji>, ja(b) <-> ia(b) occ = jb(a)
             _h, _p, occ = j, i, j
-        for (h, p) in permutations([_h, _p], 2):
+        for h, p in permutations([_h, _p], 2):
             # occ must be opposite-spin of h, p
             work_est += len(
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -1727,6 +1747,11 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield from do_single_D_pt2(j, j, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
             yield from do_single_D_pt2(j, i, j, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
 
+    #     _                             _
+    #    /   _. _|_  _   _   _  ._     |_
+    #    \_ (_|  |_ (/_ (_| (_) | \/   |_
+    #                    _|       /
+
     @staticmethod
     def estimate_work_category_E(
         idx: Two_electron_integral_index,
@@ -1757,7 +1782,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         elif j == k:  # <ij|jl> = - <ij|lj>
             # singles, ia(b) to la(b) where ja(b) is occupied
             _h, _p, occ = i, l, j
-        for (h, p) in permutations([_h, _p], 2):
+        for h, p in permutations([_h, _p], 2):
             # occ must be same-spin as h, p
             work_est += len(
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -2077,6 +2102,11 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield from do_single_E_pt2(k, i, j, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
             yield from do_single_E_pt2(k, j, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
 
+    #    _                             _
+    #   /   _. _|_  _   _   _  ._     |_
+    #   \_ (_|  |_ (/_ (_| (_) | \/   |
+    #                   _|       /
+
     @staticmethod
     def estimate_work_category_F(
         idx: Two_electron_integral_index,
@@ -2251,6 +2281,11 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin_pt2(
             [k, i], [k, i], psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
         )
+
+    #    _                             __
+    #   /   _. _|_  _   _   _  ._     /__
+    #   \_ (_|  |_ (/_ (_| (_) | \/   \_|
+    #                   _|       /
 
     @staticmethod
     def estimate_work_category_G(
