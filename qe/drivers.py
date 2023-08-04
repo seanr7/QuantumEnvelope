@@ -945,6 +945,32 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield (I, det_J), phase
 
     @staticmethod
+    def estimate_work_category_A(
+        idx: Two_electron_integral_index,
+        spindet_occ_local: Dict[OrbitalIdx, Set[int]],
+        oppspindet_occ_local: Dict[OrbitalIdx, Set[int]],
+    ) -> int:
+        """
+        For load-balancing; estimate the amount of work required for inputted integral idx = <ij|kl> in category A
+        Used to split integrals across ranks during the Hamiltonian build
+        Category A possibilties:
+            i = k = j = l: e.g., (1, 1, 1, 1)
+        Contributes only to diagonals; opposite spin occupation only
+
+        Inputs:
+        :param i:                                       Indices in category A integral
+        :param spindet_occ_local, oppspindet_occ_local: Dictionaries mapping spin orbital indices to determinants (in local portion of wave function)
+                                                        occupied in those indices.
+        """
+        # Get indices of determinants satisfying the orbital occupation criterion dicated by idx; count and return
+        i, _, _, _ = idx
+        return len(
+            Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                spindet_occ_local, oppspindet_occ_local, {"same": {i}, "opposite": {i}}, "all"
+            )
+        )
+
+    @staticmethod
     def category_A(
         idx: Two_electron_integral_index,
         psi_i: Psi_det,
@@ -982,6 +1008,50 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             )
 
         yield from do_diagonal_A(i, j, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i)
+
+    @staticmethod
+    def estimate_work_category_B(
+        idx: Two_electron_integral_index,
+        spindet_occ_local: Dict[OrbitalIdx, Set[int]],
+        oppspindet_occ_local: Dict[OrbitalIdx, Set[int]],
+    ) -> int:
+        """
+        For load-balancing; estimate the amount of work required for inputted integral idx = <ij|kl> in category B
+        Used to split integrals across ranks during the Hamiltonian build
+        Category B possibilities:
+            i = k < j = l: e.g., (1, 2, 1, 2)
+        Contributes only to diagonals. Same + opposite spin occ.
+
+        Inputs:
+        :param idx:                                     Two-electron integrala in category B
+        :param spindet_occ_local, oppspindet_occ_local: Dictionaries mapping spin orbital indices to determinants (in local portion of wave function)
+                                                        occupied in those indices.
+        """
+        # Get indices of determinants satisfying the orbital occupation criterion dicated by idx; count and return
+        i, j, _, _ = idx
+        # Category B so i = k < j = l
+        work_est = 0
+        work_est += len(
+            Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                spindet_occ_local, oppspindet_occ_local, {"same": {i}, "opposite": {j}}, "all"
+            )
+        )
+        work_est += len(
+            Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                spindet_occ_local, oppspindet_occ_local, {"same": {i, j}}, "all"
+            )
+        )
+        work_est += len(
+            Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                oppspindet_occ_local, spindet_occ_local, {"same": {i}, "opposite": {j}}, "all"
+            )
+        )
+        work_est += len(
+            Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                oppspindet_occ_local, spindet_occ_local, {"same": {i, j}}, "all"
+            )
+        )
+        return work_est
 
     @staticmethod
     def category_B(
@@ -1032,6 +1102,66 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             )
 
         yield from do_diagonal_B(i, j, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i)
+
+    @staticmethod
+    def estimate_work_category_C(
+        idx: Two_electron_integral_index,
+        spindet_occ_local: Dict[OrbitalIdx, Set[int]],
+        oppspindet_occ_local: Dict[OrbitalIdx, Set[int]],
+    ) -> int:
+        """
+        For load-balancing; estimate the amount of work required for inputted integral idx = <ij|kl> in category C
+        Used to split integrals across ranks during the Hamiltonian build
+        Category C possibilties:
+            i = k < j < l: e.g., (1, 2, 1, 3)
+            i < k < j = l: e.g., (1, 3, 2, 3)
+            j < i = k < l: e.g., (2, 1, 2, 3)
+        Contributes only to singles (where occ is same spin or opposite spin).
+
+        Inputs:
+        :param idx:                                     Two-electron integrala in category C
+        :param spindet_occ_local, oppspindet_occ_local: Dictionaries mapping spin orbital indices to determinants (in local portion of wave function)
+                                                        occupied in those indices.
+        """
+        # Get indices of determinants satisfying the orbital occupation criterion dicated by idx; count and return
+        i, j, k, l = idx
+        work_est = 0
+        if i == k:  # <ij|il> = <ji|li>, ja(b) <-> la(b), occ = ia or ib
+            # Count dets that can contribute via j <-> l, i occupied (same and opposite spin)
+            _h, _p, occ = j, l, i
+        else:  # j == l, <ji|jk> = <ij|kj>, ia(b) to ka(b), occ = ja or jb
+            _h, _p, occ = i, k, j
+
+        for (h, p) in permutations([_h, _p], 2):
+            # occ can be same-spin or opposite-spin as h, p
+            work_est += len(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    spindet_occ_local, {}, {"same": {h, occ}}, {"same": {p}}
+                )
+            )
+            work_est += len(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    spindet_occ_local,
+                    oppspindet_occ_local,
+                    {"same": {h}, "opposite": {occ}},
+                    {"same": {p}},
+                )
+            )
+            # Now, opposite-spin excitation
+            work_est += len(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    oppspindet_occ_local, {}, {"same": {h, occ}}, {"same": {p}}
+                )
+            )
+            work_est += len(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    oppspindet_occ_local,
+                    spindet_occ_local,
+                    {"same": {h}, "opposite": {occ}},
+                    {"same": {p}},
+                )
+            )
+        return work_est
 
     @staticmethod
     def category_C(
@@ -1333,6 +1463,52 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield from do_single_C_pt2(j, k, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
 
     @staticmethod
+    def estimate_work_category_D(
+        idx: Two_electron_integral_index,
+        spindet_occ_local: Dict[OrbitalIdx, Set[int]],
+        oppspindet_occ_local: Dict[OrbitalIdx, Set[int]],
+    ) -> int:
+        """
+        For load-balancing; estimate the amount of work required for inputted integral idx = <ij|kl> in category E
+        Used to split integrals across ranks during the Hamiltonian build
+        Category D possibilties:
+            i = j = k < l: e.g., (1, 1, 1, 2)
+            i < j = k = l: e.g., (1, 2, 2, 2)
+        Necessarily, only opposite spin excitations are allowed (e.g., occ = 1a, 1b <-> 2b)
+
+        Inputs:
+        :param idx:                                     Two-electron integral in category D
+        :param spindet_occ_local, oppspindet_occ_local: Dictionaries mapping spin orbital indices to determinants (in local portion of wave function)
+                                                        occupied in those indices.
+        """
+        # Get indices of determinants satisfying the orbital occupation criterion dicated by idx; count and return
+        i, j, k, l = idx
+        work_est = 0
+        if i == j:  # <ii|il>, ia(b) <-> la(b), occ = ib(a)
+            _h, _p, occ = i, l, i
+        else:  # i < j == k == l, <ij|jj> = <jj|ij> = <jj|ji>, ja(b) <-> ia(b) occ = jb(a)
+            _h, _p, occ = j, i, j
+        for (h, p) in permutations([_h, _p], 2):
+            # occ must be opposite-spin of h, p
+            work_est += len(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    spindet_occ_local,
+                    oppspindet_occ_local,
+                    {"same": {h}, "opposite": {occ}},
+                    {"same": {p}},
+                )
+            )
+            work_est += len(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    oppspindet_occ_local,
+                    spindet_occ_local,
+                    {"same": {h}, "opposite": {occ}},
+                    {"same": {p}},
+                )
+            )
+        return work_est
+
+    @staticmethod
     def category_D(
         idx: Two_electron_integral_index,
         psi_i: Psi_det,
@@ -1552,6 +1728,78 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield from do_single_D_pt2(j, i, j, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
 
     @staticmethod
+    def estimate_work_category_E(
+        idx: Two_electron_integral_index,
+        spindet_occ_local: Dict[OrbitalIdx, Set[int]],
+        oppspindet_occ_local: Dict[OrbitalIdx, Set[int]],
+    ) -> int:
+        """
+        For load-balancing; estimate the amount of work required for inputted integral idx = <ij|kl> in category E
+        Used to split integrals across ranks during the Hamiltonian build
+        Category E possibilties:
+            i = j < k < l: e.g., (1, 1, 2, 3)
+            i < j = k < l: e.g., (1, 2, 2, 3)
+            i < j < k = l: e.g., (1, 2, 3, 3)
+        This category contributes to single (where occ is same-spin, necessarily) and double (opposite-spin) excitation pairs
+
+        Inputs:
+        :param idx:                                     Two-electron integral in category E
+        :param spindet_occ_local, oppspindet_occ_local: Dictionaries mapping spin orbital indices to determinants (in local portion of wave function)
+                                                        occupied in those indices.
+        """
+        # Get indices of determinants satisfying the orbital occupation criterion dicated by idx; count and return
+        i, j, k, l = idx
+        work_est = 0
+        # Count dets possibly related by a single excitation
+        if i == j:  # <ii|kl> = <ii|lk> = <ik|li> -> - <ik|il>
+            # singles, ka(b) to la(b) where ia(b) is occupied
+            _h, _p, occ = k, l, i
+        elif j == k:  # <ij|jl> = - <ij|lj>
+            # singles, ia(b) to la(b) where ja(b) is occupied
+            _h, _p, occ = i, l, j
+        for (h, p) in permutations([_h, _p], 2):
+            # occ must be same-spin as h, p
+            work_est += len(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    spindet_occ_local,
+                    {},
+                    {"same": {h, occ}, "opposite": {}},
+                    {"same": {p}},
+                )
+            )
+            work_est += len(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    oppspindet_occ_local,
+                    {},
+                    {"same": {h, occ}, "opposite": {}},
+                    {"same": {p}},
+                )
+            )
+        # Count dets possibly related by a double excitation
+        # doubles, ia(b) to ka(b) and jb(a) to lb(a)
+        for hp1, hp2 in product(permutations([i, k], 2), permutations([j, l], 2)):
+            h1, p1 = hp1
+            h2, p2 = hp2
+            # Count candidate determinantspossibly related via (opposite-spin) excitations h1 -> p1, h2 -> p2
+            work_est += len(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    spindet_occ_local,
+                    oppspindet_occ_local,
+                    {"same": {h1}, "opposite": {h2}},
+                    {"same": {p1}, "opposite": {p2}},
+                )
+            )
+            work_est += len(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    oppspindet_occ_local,
+                    spindet_occ_local,
+                    {"same": {h1}, "opposite": {h2}},
+                    {"same": {p1}, "opposite": {p2}},
+                )
+            )
+        return work_est
+
+    @staticmethod
     def category_E(
         idx: Two_electron_integral_index,
         psi_i: Psi_det,
@@ -1566,6 +1814,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             i < j = k < l: e.g., (1, 2, 2, 3)
             i < j < k = l: e.g., (1, 2, 3, 3)
         This category contributes to single (where occ is same-spin, necessarily) and double (opposite-spin) excitation pairs
+        Cat E integrals are exchange integrals when the associated determinant pairs are related via a single excitation
 
         Inputs:
         :param idx:                              (i, j, k, l) index of two-electron integral
@@ -1829,6 +2078,75 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield from do_single_E_pt2(k, j, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
 
     @staticmethod
+    def estimate_work_category_F(
+        idx: Two_electron_integral_index,
+        spindet_occ_local: Dict[OrbitalIdx, Set[int]],
+        oppspindet_occ_local: Dict[OrbitalIdx, Set[int]],
+    ) -> int:
+        """
+        For load-balancing; estimate the amount of work required for inputted integral idx = <ij|kl> in category F
+        Used to split integrals across ranks during the Hamiltonian build
+        Category F possibilties:
+            i = j < k = l: e.g., (1, 1, 2, 2)
+        This category contributes to diagonals (same-spin) and double (opposite-spin) excitation pairs
+
+        Inputs:
+        :param idx:                                     Two-electron integral in category F
+        :param spindet_occ_local, oppspindet_occ_local: Dictionaries mapping spin orbital indices to determinants (in local portion of wave function)
+                                                        occupied in those indices.
+        """
+        # Get indices of determinants satisfying the orbital occupation criterion dicated by idx; count and return
+        i, _, k, _ = idx
+        work_est = 0
+        # Count dets possibly related by diagonal elements
+        work_est += len(
+            Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                spindet_occ_local, oppspindet_occ_local, {"same": {i, k}}, "all"
+            )
+        )
+        work_est == len(
+            Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                oppspindet_occ_local, spindet_occ_local, {"same": {i, k}}, "all"
+            )
+        )
+
+        # Count candidate determinants possibly related via (opposite-spin) excitations ia(b) <-> ka(b), ib(a) <-> kb(a)
+        work_est += len(
+            Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                spindet_occ_local,
+                oppspindet_occ_local,
+                {"same": {i}, "opposite": {k}},
+                {"same": {i}, "opposite": {k}},
+            )
+        )
+        work_est += len(
+            Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                spindet_occ_local,
+                oppspindet_occ_local,
+                {"same": {i}, "opposite": {k}},
+                {"same": {k}, "opposite": {i}},
+            )
+        )
+        work_est += len(
+            Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                oppspindet_occ_local,
+                spindet_occ_local,
+                {"same": {i}, "opposite": {k}},
+                {"same": {k}, "opposite": {i}},
+            )
+        )
+        work_est += len(
+            Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                spindet_occ_local,
+                oppspindet_occ_local,
+                {"same": {k}, "opposite": {i}},
+                {"same": {k}, "opposite": {i}},
+            )
+        )
+
+        return work_est
+
+    @staticmethod
     def category_F(
         idx: Two_electron_integral_index,
         psi_i: Psi_det,
@@ -1841,6 +2159,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         Category F possibilties:
             i = j < k = l: e.g., (1, 1, 2, 2)
         This category contributes to diagonals (same-spin) and double (opposite-spin) excitation pairs
+        Diagonal contributions in cat F are exchange integrals
 
         Inputs:
         :param idx:                              (i, j, k, l) index of two-electron integral
@@ -1932,6 +2251,69 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin_pt2(
             [k, i], [k, i], psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
         )
+
+    @staticmethod
+    def estimate_work_category_G(
+        idx: Two_electron_integral_index,
+        spindet_occ_local: Dict[OrbitalIdx, Set[int]],
+        oppspindet_occ_local: Dict[OrbitalIdx, Set[int]],
+    ) -> int:
+        """
+        For load-balancing; estimate the amount of work required for inputted integral idx = <ij|kl> in category G
+        Used to split integrals across ranks during the Hamiltonian build
+        Category G possibilties:
+            i < j < k < l: e.g., (1, 2, 3, 4)
+            i < k < j < l: e.g., (1, 3, 2, 4)
+            j < i < k < l: e.g., (2, 1, 3, 4)
+        This category contributes to opposite-spin and same-spin double excitations
+
+        Inputs:
+        :param idx:                                     Two-electron integral in category G
+        :param spindet_occ_local, oppspindet_occ_local: Dictionaries mapping spin orbital indices to determinants (in local portion of wave function)
+                                                        occupied in those indices.
+        """
+        # Get indices of determinants satisfying the orbital occupation criterion dicated by idx; count and return
+        i, j, k, l = idx
+        work_est = 0
+        # Count dets possibly related by a double excitation
+        # doubles, ia(b) to ka(b) and jb(a) to lb(a)
+        for hp1, hp2 in product(permutations([i, k], 2), permutations([j, l], 2)):
+            h1, p1 = hp1
+            h2, p2 = hp2
+            # Count candidate determinantspossibly related via (opposite-spin) excitations h1 -> p1, h2 -> p2
+            work_est += len(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    spindet_occ_local,
+                    oppspindet_occ_local,
+                    {"same": {h1}, "opposite": {h2}},
+                    {"same": {p1}, "opposite": {p2}},
+                )
+            )
+            work_est += len(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    spindet_occ_local,
+                    {},
+                    {"same": {h1, h2}, "opposite": {}},
+                    {"same": {p1, p2}, "opposite": {}},
+                )
+            )
+            work_est += len(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    oppspindet_occ_local,
+                    spindet_occ_local,
+                    {"same": {h1}, "opposite": {h2}},
+                    {"same": {p1}, "opposite": {p2}},
+                )
+            )
+            work_est += len(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    oppspindet_occ_local,
+                    {},
+                    {"same": {h1, h2}, "opposite": {}},
+                    {"same": {p1, p2}, "opposite": {}},
+                )
+            )
+        return work_est
 
     @staticmethod
     def category_G(
@@ -2276,92 +2658,74 @@ class Hamiltonian_generator(object):
             )
         ]
 
-    # def integral_load_balancing(self):
-    #     """For given local portion of the wave function `psi_local', add another layer of splitting
-    #     Estimate the amount of work done by each two-electron integral <ij|kl> according to the number of determinants
-    #     in psi_local that <ij|kl> might contribute to.
-    #     """
-    #     # Initialize array to track workload of each rank
-    #     W = np.zeros(shape=(self.world_size,), dtype="i")
-    #     H = []  # Track work dist.
-    #     # Grab dicitionaries mapping determinant indices <-> spin-orbitals occupied in those determinants
-    #     spindet_a_occ_i, spindet_b_occ_i = self.spindet_occupied_int
-    #     # Create a dictionary for the `local` two-electron integrals and their values
-    #     local_d_two_e_integral = defaultdict(int)
-    #     # Loop over two-electron integrals
-    #     for idx in self.d_two_e_integral:
-    #         category = integral_category(idx)
-    #         # Unpack spin-orbital indices of current integral
-    #         i, j, k, l = idx
-    #         # h is estimation fo work for <ij|kl>; initialize to 0 for each integral
-    #         h = 0
-    #         if category == "A":
-    #             # i = j = k = l, e.g. <11|11>
-    #             # Estimated amount of work <ij|kl> will do
-    #             h += len(
-    #                 Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
-    #                     spindet_a_occ_i, spindet_b_occ_i, {"same": {i}, "opposite": {j}}, "all"
-    #                 )
-    #             )
-    #         elif category == "B":
-    #             # i = k < j = l, e.g. <12|12>
-    #             h += len(
-    #                 Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
-    #                     spindet_a_occ_i, spindet_b_occ_i, {"same": {i}, "opposite": {j}}, "all"
-    #                 )
-    #             )
-    #             h += len(
-    #                 Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
-    #                     spindet_a_occ_i, spindet_b_occ_i, {"same": {i, j}}, "all"
-    #                 )
-    #             )
-    #             h += len(
-    #                 Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
-    #                     spindet_b_occ_i, spindet_a_occ_i, {"same": {i}, "opposite": {j}}, "all"
-    #                 )
-    #             )
-    #             h += len(
-    #                 Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
-    #                     spindet_b_occ_i, spindet_a_occ_i, {"same": {i, j}}, "all"
-    #                 )
-    #             )
-    #         elif category == "C":
-    #             if i == k:  # <ij|il> = <ji|li>, ja(b) <-> la(b), occ = ia or ib
-    #                 det_indices_1 = chain(
-    #                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
-    #                         spindet_occ_i, {}, {"same": {j, i}}, {"same": {k}}
-    #                     ),
-    #                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
-    #                         spindet_occ_i, oppspindet_occ_i, {"same": {i}, "opposite": {j}}, {"same": {k}}
-    #                     ),
-    #                 )
-    #                 det_indices_2 = chain(
-    #                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
-    #                         spindet_occ_i, {}, {"same": {j, k}}, {"same": {i}}
-    #                     ),
-    #                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
-    #                         spindet_occ_i, oppspindet_occ_i, {"same": {k}, "opposite": {j}}, {"same": {i}}
-    #                     ),
-    #                 )
-    #             else:  # j == l, <ji|jk> = <ij|kj>, ia(b) to ka(b), occ = ja or jb
+    def integral_load_balancing(self):
+        """For given local portion of the wave function `psi_local', add another layer of splitting
+        Estimate the amount of work done by each two-electron integral <ij|kl> according to the number of determinants
+        in psi_local that <ij|kl> might contribute to.
+        """
+        # Initialize array to track workload of each rank
+        W = np.zeros(shape=(self.world_size,), dtype="i")
+        H = []  # Track work dist.
+        # Grab dicitionaries mapping determinant indices <-> spin-orbitals occupied in those determinants
+        spindet_a_occ_local, spindet_b_occ_local = self.spindet_occupied_int
+        # Create a dictionary for the `local` two-electron integrals and their values
+        local_d_two_e_integral = defaultdict(int)
+        # Loop over two-electron integrals
+        for idx in self.d_two_e_integral:
+            category = integral_category(idx)
+            # Unpack spin-orbital indices of current integral
+            i, j, k, l = idx
+            # h is estimation of work for <ij|kl>; initialize to 0 for each integral
+            h = 0
+            if category == "A":
+                h = Hamiltonian_two_electrons_integral_driven.estimate_work_category_A(
+                    idx, spindet_a_occ_local, spindet_b_occ_local
+                )
+            if category == "B":
+                h = Hamiltonian_two_electrons_integral_driven.estimate_work_category_B(
+                    idx, spindet_a_occ_local, spindet_b_occ_local
+                )
+            if category == "C":
+                h = Hamiltonian_two_electrons_integral_driven.estimate_work_category_C(
+                    idx, spindet_a_occ_local, spindet_b_occ_local
+                )
+            if category == "D":
+                h = Hamiltonian_two_electrons_integral_driven.estimate_work_category_D(
+                    idx, spindet_a_occ_local, spindet_b_occ_local
+                )
+            if category == "E":
+                h = Hamiltonian_two_electrons_integral_driven.estimate_work_category_E(
+                    idx, spindet_a_occ_local, spindet_b_occ_local
+                )
+            if category == "F":
+                h = Hamiltonian_two_electrons_integral_driven.estimate_work_category_F(
+                    idx, spindet_a_occ_local, spindet_b_occ_local
+                )
+            if category == "G":
+                h = Hamiltonian_two_electrons_integral_driven.estimate_work_category_G(
+                    idx, spindet_a_occ_local, spindet_b_occ_local
+                )
 
-    #     # Handle case where integral contributes to zero determinant pairs; no one receives it
-    #     if h:
-    #         _, loc = self.comm.allreduce(
-    #             (W[self.rank], self.rank), MPI.MINLOC
-    #         )  # This is a tuple, so use python command
-    #         if loc == self.rank:  # Rank with lowest amount of work collects current constraint
-    #             # Since we are using default dict, this adds the key of <ij|kl> to the local dict
-    #             # To that key, we associate the value of the two-electron integral which we grab from the full dictionary
-    #             local_d_two_e_integral[compound_idx4(i, j, k, l)] = self.d_two_e_integral[
-    #                 compound_idx4(i, j, k, l)
-    #             ]
-    #             H.append(h)
-    #             W[self.rank] += h  # Add h to the amount of `work` rank has
+        # Handle case where integral contributes to zero determinant pairs; no one receives it
+        if h:
+            _, loc = self.comm.allreduce(
+                (W[self.rank], self.rank), MPI.MINLOC
+            )  # This is a tuple, so use python command
+            if loc == self.rank:  # Rank with lowest amount of work collects current constraint
+                # Since we are using default dict, this adds the key of <ij|kl> to the local dict
+                # To that key, we associate the value of the two-electron integral which we grab from the full dictionary
+                local_d_two_e_integral[compound_idx4(i, j, k, l)] = self.d_two_e_integral[
+                    compound_idx4(i, j, k, l)
+                ]
+                H.append(h)
+                W[self.rank] += h  # Add h to the amount of `work` rank has
 
-    # @cached_property
-    # def two_electron_integrals_local(self):
-    #     return self.integral_load_balancing()
+        return local_d_two_e_integral, H
+
+    @cached_property
+    def two_electron_integrals_local(self):
+        local_d_two_e_integral, _ = self.integral_load_balancing()
+        return local_d_two_e_integral
 
     # Generate and cache necessary utilities for building the two-electron Hamiltonian in an integral-driven fashion.
     @staticmethod
@@ -2370,10 +2734,10 @@ class Hamiltonian_generator(object):
     ) -> Tuple[Dict[OrbitalIdx, Set[int]], Dict[OrbitalIdx, Set[int]]]:
         """
         Return (two) dicts mapping spin orbital indices -> determinants that are occupied in those orbitals
-        >>> H_indices_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
+        >>> Hamiltonian_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
         (defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}}),
          defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}}))
-        >>> H_indices_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,),beta=(0,))])[0][1]
+        >>> Hamiltonian_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,),beta=(0,))])[0][1]
         set()
         """
 
