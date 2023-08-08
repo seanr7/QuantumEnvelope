@@ -2583,8 +2583,8 @@ class Hamiltonian_generator(object):
 
     :param comm:             MPI.COMM_WORLD communicator
     :param E0:               Float, energy
-    :param d_one_e_integral: Dictionary of one-electorn integrals
-    :param d_two_e_integral: Dictionary of two-electorn integrals
+    :param d_one_e_integral: Dictionary of one-electron integrals
+    :param d_two_e_integral: Dictionary of two-electron integrals
     :param driven_by:        Do we generate H in an integral or determinant-driven fashion?
 
     ~
@@ -2613,61 +2613,165 @@ class Hamiltonian_generator(object):
         d_one_e_integral: One_electron_integral,
         d_two_e_integral: Two_electron_integral,
         psi_internal: Psi_det,
-        driven_by="determinant",
+        driven_by="integral",
+        n_groups=0,
     ):
-        self.comm = comm
-        self.world_size = self.comm.Get_size()  # No. of processes running
-        self.rank = self.comm.Get_rank()  # Rank of current process
-        self.MPI_master_rank = 0  # Master rank
-        # Full problem size is no. of internal determinants
+        # What is the full `problem size`? Take as Ndet -> Number of internal determinants at this CISPI iteration
         self.full_problem_size = len(psi_internal)
-        # Save lists of determinants/integral dictionaries with instance of class
+        # Save internal wave function + dictionaries of integrals with instance of class
         self.psi_internal = psi_internal
         self.E0 = E0
         self.d_one_e_integral = d_one_e_integral
         self.d_two_e_integral = d_two_e_integral
+        # How do we build the Hamiltonian or compute the E_pt2? In an integral-driven or determinant-driven fashion?
         self.driven_by = driven_by
+        # MPI management; get rank of current process, no. of processes running, and assign master
+        self.comm = comm
+        self.world_size = self.comm.Get_size()
+        self.rank = self.comm.Get_rank()  # `Global' rank...
+        self.MPI_master_rank = 0
+        # We split self.comm into `n_groups` sub-groups; each member of the sub-group
+        #   1. Has access to the same portion of the wave funtion (`psi_local`)
+        #   2. A different portion of the two-electron integrals (`d_two_e_integrals_local`)
+        if n_groups == 0:
+            # Default argument; no sub-groups. In this case, we only split the wave function
+            # So, each rank is it's own `sub-group`
+            self.n_groups = self.world_size
+            # Indicate no integral splitting
+            # `subgroup_comm` is the global communicator
+            self.subgroup_comm = self.comm
+        else:
+            self.n_groups = n_groups
 
-    # TODO: Will have to adjust these functions to handle the `two-layer splitting`
-    # i.e., two ranks having the same psi_local, but different sets of the two-electron integrals...
-    # I think it's just a matter of.. for self.world_size, how many of these ranks to we dedicate to determinant splits
-    # Then, based on how many are left over, split integrals.
+    @cached_property
+    def size_of_subgroups(self):
+        """Determine size of (how many ranks belong to) each of the self.n_groups sub-groups
+        Per sub-group, size_of_subgroups[i] is how many times we split the two-electron integrals in sub-group i
+
+        If no communicator splitting (only wave function is split) trivially, have self.world_size sub-groups of size 1 (final testcase)
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0], "integral", 4)
+        >>> h.world_size = 16
+        >>> h.size_of_subgroups
+        array([4, 4, 4, 4], dtype=int32)
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0], "integral", 5)
+        >>> h.world_size = 16
+        >>> h.size_of_subgroups
+        array([4, 3, 3, 3, 3], dtype=int32)
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0], "integral", 5)
+        >>> h.world_size = 64
+        >>> h.size_of_subgroups
+        array([13, 13, 13, 13, 12], dtype=int32)
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0], "integral", 4)
+        >>> h.world_size = 4
+        >>> h.size_of_subgroups
+        array([1, 1, 1, 1], dtype=int32)
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0], "integral", 5)
+        >>> h.world_size = 64
+        >>> h.rank = 63
+        >>> h.size_of_subgroups[h.subgroup_tag]
+        12
+        """
+        # Compute size of (how many ranks belong to) each sub-group
+        size_floor, rem = divmod(self.world_size, self.n_groups)
+        size_ceil = size_floor + 1
+        return np.array([size_ceil] * rem + [size_floor] * (self.n_groups - rem), dtype="i")
+
+    @property
+    def subgroup_tag(self):
+        """Determine to which communicator sub-group each rank belongs
+        Members of each sub-group share the same local portion of the wave function, but different two-electron integrals
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*100, "integral", 4)
+        >>> h.world_size = 16
+        >>> h.rank = 7
+        >>> h.subgroup_tag
+        1
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*100, "integral", 4)
+        >>> h.world_size = 16
+        >>> h.rank = 13
+        >>> h.subgroup_tag
+        3
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*100, "integral", 16)
+        >>> h.world_size = 16
+        >>> h.rank = 2
+        >>> h.subgroup_tag
+        2
+        """
+        # Get sub-group distribution
+        subgroup_distribution = self.size_of_subgroups
+        A = np.zeros(self.n_groups, dtype="i")
+        np.add.accumulate(subgroup_distribution[:-1], out=A[1:])
+        i = 0  # Counter to determine sub-group tag
+        while i < self.n_groups - 1:
+            if self.rank < A[i + 1]:
+                return i
+            else:
+                i += 1
+        # If not already returned, i = self.n_groups - 1
+        return i
+
+    @cached_property
+    def split_comm(self):
+        """Split self.comm object into self.n_groups sub-groups"""
+        # TODO: Will need to make sure this works properly....
+        if self.n_groups == self.world_size:
+            return self.comm
+        else:
+            return self.comm.Split(self.subgroup_tag)
 
     @cached_property
     def det_distribution(self):
         """Handle distribution of internal determinants; split evenly across ranks
         >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*100)
         >>> h.world_size = 3
+        >>> h.n_groups = 3
         >>> h.det_distribution
         array([34, 33, 33], dtype=int32)
         >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*101)
         >>> h.world_size = 3
+        >>> h.n_groups = 3
         >>> h.det_distribution
         array([34, 34, 33], dtype=int32)
         >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*102)
-        >>> h.world_size = 3
+        >>> h.world_size = 6
+        >>> h.n_groups = 3
         >>> h.det_distribution
         array([34, 34, 34], dtype=int32)
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*100, "integral", 4)
+        >>> h.world_size = 16
+        >>> h.det_distribution
+        array([25, 25, 25, 25], dtype=int32)
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*100, "integral", 6)
+        >>> h.world_size = 16
+        >>> h.det_distribution
+        array([17, 17, 17, 17, 16, 16], dtype=int32)
         """
-        floor, remainder = divmod(self.full_problem_size, self.world_size)
+        # TODO: Update according to new input params.. Or, double check
+        floor, remainder = divmod(self.full_problem_size, self.n_groups)
         ceiling = floor + 1
-        return np.array([ceiling] * remainder + [floor] * (self.world_size - remainder), dtype="i")
+        return np.array([ceiling] * remainder + [floor] * (self.n_groups - remainder), dtype="i")
 
     @cached_property
     def local_size(self):
-        # What is the size of the `local` internal space available to the mpi rank?
-        return self.det_distribution[self.rank]
+        """What is the size of the `local` internal space available to the mpi rank?
+        In the Davidson step, this is the row-dimension of the len(psi_local) x len(psi_internal) H_i portion of H
+            self.subgroup_tag is the subgroup this rank belongs to; returns size of psi_local available to that subgroup
+        """
+        return self.det_distribution[self.subgroup_tag]
 
     @cached_property
     def det_offsets(self):
         """Offsets of determinants in mem
         >>> __test__= { "Hamiltonian_generator.offsets": Hamiltonian_generator.det_offsets }
-        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*100)
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*100, "integral", 3)
         >>> h.world_size = 3
         >>> h.det_offsets
         array([ 0, 34, 67], dtype=int32)
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*100, "integral", 4)
+        >>> h.world_size = 16
+        >>> h.det_offsets
+        array([ 0, 25, 50, 75], dtype=int32)
         """
-        A = np.zeros(self.world_size, dtype="i")
+        A = np.zeros(self.n_groups, dtype="i")
         np.add.accumulate(self.det_distribution[:-1], out=A[1:])
         return A
 
@@ -2675,32 +2779,72 @@ class Hamiltonian_generator(object):
     def psi_local(self):
         """Splitting of wave function.
         Each rank grabs local portion of the internal determinants according to the work distribution
-        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [Determinant((0,), (0,)), Determinant((1,), (1,))])
-        >>> h.world_size = 2
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [Determinant((0,), (0,)), Determinant((1,), (1,))], "integral", 2)
         >>> h.rank = 0
         >>> h.psi_local
         [Determinant(alpha=(0,), beta=(0,))]
-        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [Determinant((0,), (0,)), Determinant((1,), (1,))])
-        >>> h.world_size = 2
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [Determinant((0,), (0,)), Determinant((1,), (1,))], "integral", 2)
         >>> h.rank = 1
         >>> h.psi_local
         [Determinant(alpha=(1,), beta=(1,))]
         """
         # TODO: Right now, having each rank do this. Will re-do each iteration, but can be optimized somehow
         return self.psi_internal[
-            self.det_offsets[self.rank] : (
-                self.det_offsets[self.rank] + self.det_distribution[self.rank]
+            self.det_offsets[self.subgroup_tag] : (
+                self.det_offsets[self.subgroup_tag] + self.det_distribution[self.subgroup_tag]
             )
         ]
 
+    # Generate and cache necessary utilities for building the two-electron Hamiltonian in an integral-driven fashion.
+    @staticmethod
+    def get_spindet_a_occ_spindet_b_occ(
+        psi_i: Psi_det,
+    ) -> Tuple[Dict[OrbitalIdx, Set[int]], Dict[OrbitalIdx, Set[int]]]:
+        """
+        Return (two) dicts mapping spin orbital indices -> determinants that are occupied in those orbitals
+        >>> Hamiltonian_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
+        (defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}}),
+         defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}}))
+        >>> Hamiltonian_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,),beta=(0,))])[0][1]
+        set()
+        """
+
+        # TODO: Implement bitstring rep
+        # Can generate det_to_indices hash in here
+        def get_dets_occ(psi_i: Psi_det, spin: str) -> Dict[OrbitalIdx, Set[int]]:
+            ds = defaultdict(set)
+            for i, det in enumerate(psi_i):
+                for o in getattr(det, spin):
+                    ds[o].add(i)
+            return ds
+
+        return tuple(get_dets_occ(psi_i, spin) for spin in ["alpha", "beta"])
+
+    @cached_property
+    def det_to_index_internal(self):
+        # Create and cache dictionary mapping connected determinants \in psi_internal to associated indices.
+        return {det: i for i, det in enumerate(self.psi_internal)}
+
+    @cached_property
+    def spindets_occupied_in_local_dets(self):
+        # Create and cache dictionaries mapping spin-orbital indices to determinants \in psi_locala to associated indices
+        # Used in buidling H
+        return self.get_spindet_a_occ_spindet_b_occ(self.psi_local)
+
+    @cached_property
+    def spindets_occupied_in_internal_dets(self):
+        # Create and cache dictionaries mapping spin-orbital indices to determinants \in psi_internal to associated indices
+        # Used in PT2
+        return self.get_spindet_a_occ_spindet_b_occ(self.psi_internal)
+
     def integral_load_balancing(self):
-        """For given local portion of the wave function `psi_local', add another layer of splitting
-        Estimate the amount of work done by each two-electron integral <ij|kl> according to the number of determinants
+        """Estimate the amount of work done by each two-electron integral <ij|kl> according to the number of determinants
         in psi_local that <ij|kl> might contribute to.
         """
         # Initialize array to track workload of each rank
-        W = np.zeros(shape=(self.world_size,), dtype="i")
-        H = []  # Track work dist.
+        # Ranks within each sub-group do this.. Each sub-group consists of self.n_int_groups members
+        W = np.zeros(shape=(self.size_of_subgroups[self.subgroup_tag],), dtype="i")
+        H = []  # Contains workload of each integral
         # Grab dicitionaries mapping determinant indices <-> spin-orbitals occupied in those determinants
         spindet_a_occ_local, spindet_b_occ_local = self.spindet_occupied_int
         # Create a dictionary for the `local` two-electron integrals and their values
@@ -2758,51 +2902,15 @@ class Hamiltonian_generator(object):
         return local_d_two_e_integral, H
 
     @cached_property
-    def two_electron_integrals_local(self):
-        local_d_two_e_integral, _ = self.integral_load_balancing()
-        return local_d_two_e_integral
-
-    # Generate and cache necessary utilities for building the two-electron Hamiltonian in an integral-driven fashion.
-    @staticmethod
-    def get_spindet_a_occ_spindet_b_occ(
-        psi_i: Psi_det,
-    ) -> Tuple[Dict[OrbitalIdx, Set[int]], Dict[OrbitalIdx, Set[int]]]:
-        """
-        Return (two) dicts mapping spin orbital indices -> determinants that are occupied in those orbitals
-        >>> Hamiltonian_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
-        (defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}}),
-         defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}}))
-        >>> Hamiltonian_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,),beta=(0,))])[0][1]
-        set()
-        """
-
-        # TODO: Implement bitstring rep
-        # Can generate det_to_indices hash in here
-        def get_dets_occ(psi_i: Psi_det, spin: str) -> Dict[OrbitalIdx, Set[int]]:
-            ds = defaultdict(set)
-            for i, det in enumerate(psi_i):
-                for o in getattr(det, spin):
-                    ds[o].add(i)
-            return ds
-
-        return tuple(get_dets_occ(psi_i, spin) for spin in ["alpha", "beta"])
-
-    @cached_property
-    def det_to_index_internal(self):
-        # Create and cache dictionary mapping connected determinants \in psi_internal to associated indices.
-        return {det: i for i, det in enumerate(self.psi_internal)}
-
-    @cached_property
-    def spindets_occupied_in_local_dets(self):
-        # Create and cache dictionaries mapping spin-orbital indices to determinants \in psi_locala to associated indices
-        # Used in buidling H
-        return self.get_spindet_a_occ_spindet_b_occ(self.psi_local)
-
-    @cached_property
-    def spindets_occupied_in_internal_dets(self):
-        # Create and cache dictionaries mapping spin-orbital indices to determinants \in psi_internal to associated indices
-        # Used in PT2
-        return self.get_spindet_a_occ_spindet_b_occ(self.psi_internal)
+    def d_two_e_integral_local(self):
+        # Perform load balancing once each iteration, save integrals with instance of class
+        # Each rank belongs to a sub-group identified by self.subgroup_tag
+        if self.n_int_groups == 0:
+            # Handle case of no integral splitting: local integrals are all integrals
+            return self.d_two_e_integral
+        else:
+            local_integrals, _ = self.integral_load_balancing()
+            return local_integrals
 
     @cached_property
     def N_orb(self):
@@ -2816,10 +2924,11 @@ class Hamiltonian_generator(object):
 
     @cached_property
     def Hamiltonian_2e_driver(self):
+        # Pass split integrals as arguments
         if self.driven_by == "determinant":
-            return Hamiltonian_two_electrons_determinant_driven(self.d_two_e_integral)
+            return Hamiltonian_two_electrons_determinant_driven(self.d_two_e_integral_local)
         elif self.driven_by == "integral":
-            return Hamiltonian_two_electrons_integral_driven(self.d_two_e_integral)
+            return Hamiltonian_two_electrons_integral_driven(self.d_two_e_integral_local)
         else:
             raise NotImplementedError
 
@@ -2864,6 +2973,7 @@ class Hamiltonian_generator(object):
             raise NotImplementedError
         return H_i_1e + H_i_2e
 
+    # TODO: Update this H function to handle splitting of the integrals
     @cached_property
     def H(self):
         """Build full Hamiltonian matrix, H = [H_1; ...; H_N].
@@ -3143,6 +3253,7 @@ class Davidson_manager(object):
             # Gather full trial vectors added during previous iteration on each rank
             V_new = np.zeros((n, n_newvecs), dtype="float")
             V_inew = np.array(V_ik[:, -n_newvecs:], dtype="float")
+            # TODO: For splitting the integrals, need to update this collective
             self.comm.Allgatherv(
                 [V_inew, MPI.DOUBLE],
                 [
