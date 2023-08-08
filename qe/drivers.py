@@ -2613,7 +2613,7 @@ class Hamiltonian_generator(object):
         d_one_e_integral: One_electron_integral,
         d_two_e_integral: Two_electron_integral,
         psi_internal: Psi_det,
-        driven_by="integral",
+        driven_by="determinant",
         n_groups=0,
     ):
         # What is the full `problem size`? Take as Ndet -> Number of internal determinants at this CISPI iteration
@@ -2692,9 +2692,9 @@ class Hamiltonian_generator(object):
         3
         >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*100, "integral", 16)
         >>> h.world_size = 16
-        >>> h.rank = 2
+        >>> h.rank = 13
         >>> h.subgroup_tag
-        2
+        13
         """
         # Get sub-group distribution
         subgroup_distribution = self.size_of_subgroups
@@ -2711,12 +2711,13 @@ class Hamiltonian_generator(object):
 
     @cached_property
     def split_comm(self):
-        """Split self.comm object into self.n_groups sub-groups"""
+        """Split self.comm object into self.n_groups sub-groups
+        Used to handle communications within sub-groups, in which members have access to the same portion `psi_local', but different two-electron integrals
+
+        If no integral splitting, then self.subgroup_tag == self.rank; each rank has it's own self.split_comm
+        This is fine, because self.split_comm will do nothing. There is nothing to reduce across sub-groups in this case"""
         # TODO: Will need to make sure this works properly....
-        if self.n_groups == self.world_size:
-            return self.comm
-        else:
-            return self.comm.Split(self.subgroup_tag)
+        return self.comm.Split(self.subgroup_tag)
 
     @cached_property
     def det_distribution(self):
@@ -2905,7 +2906,7 @@ class Hamiltonian_generator(object):
     def d_two_e_integral_local(self):
         # Perform load balancing once each iteration, save integrals with instance of class
         # Each rank belongs to a sub-group identified by self.subgroup_tag
-        if self.n_int_groups == 0:
+        if self.n_groups == self.world_size:
             # Handle case of no integral splitting: local integrals are all integrals
             return self.d_two_e_integral
         else:
@@ -3047,7 +3048,7 @@ class Hamiltonian_generator(object):
         At first call, matrix elements of H_i are built `on-the-fly'. Matrix elements are cached
         for later use, and iterated through to compute H_i * V implicitly.
 
-        :param H_i: local (self.local_size \times n) row-wise portion of Hamiltonian (never explicitly formed)
+        :param H_i: local (self.local_size \times Ndet) row-wise portion of Hamiltonian (never explicitly formed)
         :param V:  (self.full_size \times k) diensional numpy array
 
         :return W_i: locally computed chunk of matrix-matrix product (self.local_size \times k), as a numpy array
@@ -3148,7 +3149,7 @@ class Davidson_manager(object):
         V_ik = np.c_[V_ik, v_inew / np.linalg.norm(v_new)]
         for j in range(1, dim_S):
             # Orthogonalize next vector against previous ones in restart basis
-            v_inew, norm_vnew = self.mgs(V_ik[:, :j], V_inew[:, j])
+            v_inew, _ = self.mgs(V_ik[:, :j], V_inew[:, j])
             V_ik = np.c_[V_ik, v_inew]  # Update basis
         n_newvecs = dim_S
         return dim_S, n_newvecs, V_ik, W_ik
