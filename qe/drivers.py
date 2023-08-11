@@ -3179,7 +3179,9 @@ class Davidson_manager(object):
         t_k = np.zeros(
             self.full_problem_size, dtype="float"
         )  # Pre-allocate space to receive new guess vector
-        self.comm.Allgatherv([t_ik, MPI.DOUBLE], [t_k, self.distribution, self.offsets, MPI.DOUBLE])
+        self.comm.Allgatherv(
+            [t_ik, MPI.DOUBLE], [t_k, self.row_distribution, self.row_offsets, MPI.DOUBLE]
+        )
         norm_tk = np.linalg.norm(t_k)
         return t_ik / norm_tk, norm_tk  # Return new orthonormalized vector
 
@@ -3210,7 +3212,10 @@ class Davidson_manager(object):
         """
         I = np.eye(n, dim_S)
         V_iguess = I[
-            self.offsets[self.rank] : (self.offsets[self.rank] + self.distribution[self.rank]), :
+            self.row_offsets[self.subgroup_tag] : (
+                self.row_offsets[self.subgroup_tag] + self.row_distribution[self.subgroup_tag]
+            ),
+            :,
         ]
 
         return V_iguess
@@ -3272,8 +3277,8 @@ class Davidson_manager(object):
                 [V_inew, MPI.DOUBLE],
                 [
                     V_new,
-                    n_newvecs * np.array(self.distribution),
-                    n_newvecs * np.array(self.offsets),
+                    n_newvecs * np.array(self.row_distribution),
+                    n_newvecs * np.array(self.row_offsets),
                     MPI.DOUBLE,
                 ],
             )
@@ -3309,8 +3314,8 @@ class Davidson_manager(object):
                 [R_i, MPI.DOUBLE],
                 [
                     R,
-                    n_eig * np.array(self.distribution),
-                    n_eig * np.array(self.offsets),
+                    n_eig * np.array(self.row_distribution),
+                    n_eig * np.array(self.row_offsets),
                     MPI.DOUBLE,
                 ],
             )  # Gather full residuals on each rank to compute norm
@@ -3341,7 +3346,7 @@ class Davidson_manager(object):
                 t_k = np.zeros(n, dtype="float")
                 self.comm.Allgatherv(
                     [np.array(t_ik, dtype="float"), MPI.DOUBLE],
-                    [t_k, self.distribution, self.offsets, MPI.DOUBLE],
+                    [t_k, self.row_distribution, self.row_offsets, MPI.DOUBLE],
                 )
                 t_ik = t_ik / np.linalg.norm(t_k)
                 t_ik, norm_tk = self.mgs(V_ik, t_ik)
@@ -3376,7 +3381,7 @@ class Davidson_manager(object):
         # Gather Ritz vectors on all ranks
         self.comm.Allgatherv(
             [X_ik, MPI.DOUBLE],
-            [X_k, m * np.array(self.distribution), m * np.array(self.offsets), MPI.DOUBLE],
+            [X_k, m * np.array(self.row_distribution), m * np.array(self.row_offsets), MPI.DOUBLE],
         )
 
         return L_k, X_k
