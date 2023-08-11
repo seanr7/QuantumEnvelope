@@ -2946,6 +2946,7 @@ class Hamiltonian_generator(object):
         corresponding to the diagonal part of H) as a numpy vector.
         Used for pre-conditioning step in Davidson's iteration."""
         D_i = np.zeros(self.local_size, dtype="float")
+        # TODO: Change this to reflect split integrals ... Maybe every rank has access to diagonal to avoid numerical problems?
         # Iterate through local determinants m
         for j, det in enumerate(self.psi_local):
             D_i[j] = self.H_ii(det)
@@ -3114,20 +3115,24 @@ class Davidson_manager(object):
         # TODO: Is there a best practice with this sort of thing? (Computing dist. of work and the like)
         # Hamiltonian_generator computes dist. of work, so pass these to this class for easier reference.
         self.full_problem_size = H_i_generator.full_problem_size
-        # TODO: Add integral dist...
-        self.distribution = H_i_generator.det_distribution
-        self.offsets = H_i_generator.det_offsets
+        # Distribution of determinants (rows of H) across ranks
+        self.row_distribution = H_i_generator.det_distribution
+        self.row_offsets = H_i_generator.det_offsets
+        # What is the row dimension of the chunk H_i of H this rank is responsible for
         self.local_size = H_i_generator.local_size
+        # For distribution of integrals across ranks; to what subgroup does this rank belong + get subgroup comm
+        self.subgroup_tag = H_i_generator.subgroup_tag
+        self.subgroup_comm = H_i_generator.subgroup_comm
 
     def parallel_iteration_restart(self, dim_S, n_eig, n_newvecs, X_ik, V_ik, W_ik):
         """Restart Davidson's iteration; resize the trial subspace V_k
         and its associated data structures. Prevent a significant
         blow-up of column dimension.
 
-        :param dim_S: column-size of local working variables (V_ik and friends)
-        :param n_eig: number of eigenvalues to look for (minimally allowed dim_S)
-        :param n_newvecs: number of new vectors added at the previous iteration
-        :param X_ik: current Ritz vectors, numpy array
+        :param dim_S:      column-dimension of local working variables (V_ik and friends)
+        :param n_eig:      number of eigenvalues to look for (minimally allowed dim_S)
+        :param n_newvecs:  number of new vectors added at the previous iteration
+        :param X_ik:       current Ritz vectors, numpy array
         :param V_ik, W_ik: local working variables, numpy arrays
 
         :return new values for dim_S, V_ik, and W_ik following implicit restart
@@ -3143,8 +3148,9 @@ class Davidson_manager(object):
         # Initialize; normalize first basis vector
         v_inew = np.array(V_inew[:, 0], dtype="float")
         v_new = np.zeros(self.full_problem_size, dtype="float")
+        # TODO: May need to do an split_comm.Allreduce -> comm.Allgather...
         self.comm.Allgatherv(
-            [v_inew, MPI.DOUBLE], [v_new, self.distribution, self.offsets, MPI.DOUBLE]
+            [v_inew, MPI.DOUBLE], [v_new, self.row_distribution, self.row_offsets, MPI.DOUBLE]
         )
         V_ik = np.c_[V_ik, v_inew / np.linalg.norm(v_new)]
         for j in range(1, dim_S):
@@ -3228,33 +3234,40 @@ class Davidson_manager(object):
 
         :return a list of `n_eig` eigenvalues/associated eigenvectors, as numpy vector/array resp.
         """
-        # Initialization steps
-        n = self.full_problem_size  # Save full problem size
+        # Init: Get full_problem size / Hamiltonian dimension
+        n = self.full_problem_size
         # Establish local vars: trial subspace (V_ik) and action of H_i on full V_k (W_ik = H_i * V_k)
         V_ik = np.zeros((self.local_size, 0), dtype="float")
         W_ik = np.zeros((self.local_size, 0), dtype="float")
         # Set initial guess vectors and minimal initial subspace dimension
         dim_S = min(m, n)
-        assert m >= n_eig  # No. of initial guess vectors must be >= no. of desired energy values
-        # Set initial guess vectors TODO: For now, have some default guess vectors for testing
+        # The no. of initial guess vectors is necessarily >= the no. of desired energies
+        assert m >= n_eig
+        # Set initial guess vectors
         if V_iguess is None:
+            # If none specified, grab dim_S leading n-dim canonical basis vectors
             V_iguess = self.initial_guess_vectors(n, dim_S)
-        else:  # Else, check dimensions of initial guess vectors align with other inputs
+        else:
+            # Else, assure dimensions of initial guess vectors align with other inputs
             assert (n, m) == V_iguess.shape
-        V_ik = np.c_[V_ik, V_iguess]
+        V_ik = np.c_[V_ik, V_iguess]  # Store guess vectors in V_ik
+
         # Build `diagonal` of local Hamiltonian
+        # TODO: Will need to adjust this possibly for splitting of integrals... Or, we can just leave it so that every rank has access to the integrals used in building the diagonal
         D_i = self.H_i_generator.D_i
 
-        n_newvecs = dim_S  # No. of vectors added is initial subspace dimension
+        n_newvecs = dim_S  # At first iteration ``number of new vectors added'' is just the dimension of the guess subspace
         restart = True
         for k in range(1, max_iter):
             self.print_master(
                 f"Process rank: {self.rank}, Iterate: {k}, Subspace dimension: {dim_S}"
             )
             # Gather full trial vectors added during previous iteration on each rank
-            V_new = np.zeros((n, n_newvecs), dtype="float")
+            V_new = np.zeros((n, n_newvecs), dtype="float")  # Malloc
             V_inew = np.array(V_ik[:, -n_newvecs:], dtype="float")
-            # TODO: For splitting the integrals, need to update this collective
+            # TODO: With split integrals, will need add a new collective
+            #   1. ``Layer'' bricks (self.split_comm.Allreduce(op=SUM)) within sub-groups
+            #   2. ``Stack'' bricks (self.comm.Allgatherv) across sub-groups TODO: Will have to designate a sub-group ``master'' to handle these processes..
             self.comm.Allgatherv(
                 [V_inew, MPI.DOUBLE],
                 [
@@ -3266,10 +3279,12 @@ class Davidson_manager(object):
             )
             # Compute new columns of W_ik, W_inew = H_i * V_new
             # TODO: Some maximal allowed dimension before we switch to on the fly?
+            # TODO: This will still work with integral splitting... Each ``layer'' of each brick does its portion of the implicit matrix product
             W_inew = self.H_i_generator.H_i_implicit_matrix_product(V_new)  # Default is to cache
             W_ik = np.c_[W_ik, W_inew]
 
             # Each rank computes partial update to the projected Hamiltonian S_k
+            # TODO: I don't think splitting the integrals changes anything here... Stopping here for now - SR
             if restart:  # If True, need to compute full S_k explicitly
                 S_ik = np.dot(V_ik.T, W_ik)
                 restart = False
